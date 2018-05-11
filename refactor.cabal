@@ -1,0 +1,43 @@
+Name: refactor
+Version: 1.0.1
+Synopsis: Transformations on sets of Haskell modules
+Description: Split and merge modules, rename symbols, clean import lists
+Homepage: https://github.com/ddssff/refactor
+License: BSD3
+Author: David Fox
+Maintainer: David Fox
+Cabal-Version: >= 1.16
+Build-Type: Simple
+
+Library
+  Default-Language: Haskell2010
+  Hs-Source-Dirs: src
+  GHC-options: -Wall -O2
+  Build-Depends:
+    base,
+    Cabal,
+    containers,
+    cpphs,
+    data-default,
+    fgl,
+    filepath,
+    haskell-names,
+    haskell-src-exts >= 1.18,
+    hse-cpp,
+    HUnit,
+    lens,
+    mtl,
+    optparse-applicative,
+    pretty,
+    syb
+  Exposed-Modules:
+    Refactor.CPP
+    Refactor.FGL
+    Refactor.Filter
+    Refactor.Info
+    Refactor.Parse
+    Refactor.Orphans
+    Refactor.Render
+    Refactor.Split
+    Refactor.SrcLoc
+    Refactor.Utils
