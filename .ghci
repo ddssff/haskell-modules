@@ -1,2 +1,3 @@
+:set -XTemplateHaskell
 :set -isrc
 :set prompt "λ> "
