@@ -37,6 +37,7 @@ Library
     Refactor.Info
     Refactor.Parse
     Refactor.Orphans
+    Refactor.Reify
     Refactor.Render
     Refactor.Split
     Refactor.SrcLoc

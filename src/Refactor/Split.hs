@@ -1,3 +1,6 @@
+-- | Split a module in several ways based on the structure of the
+-- "declares -> uses" relation on top level declarations.
+
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE RankNTypes #-}
