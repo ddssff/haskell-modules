@@ -25,7 +25,7 @@ import Prelude hiding (lookup)
 import Refactor.FGL (components)
 import Refactor.Orphans ()
 import Refactor.Parse (parseAndAnnotateModules)
-import Refactor.Reify (moduleSymbols)
+import Refactor.Reify (findModuleSymbols)
 import Refactor.Render (renderModule)
 import Refactor.Split (bisect, declares, DeclGroup(unDecs), withDecomposedModule)
 import System.IO (readFile, writeFile)
@@ -391,8 +391,8 @@ test4 = TestCase (assertEqual "loadBase GHC.Types"
 -- Applicative.
 test5 :: Test
 test5 = TestCase (do let syms1 = Set.fromList $ maybe (error "test5") id $ Map.lookup (Exts.ModuleName () "Prelude") $(runIO loadBase >>= lift)
-                         syms2 = Set.fromList $ $(moduleSymbols "Prelude")
-                     assertEqual "loadBase vs moduleSymbols 1"
+                         syms2 = Set.fromList $ $(findModuleSymbols "Prelude")
+                     assertEqual "loadBase vs findModuleSymbols 1"
                        ([Constructor {symbolModule = ModuleName () "Data.Maybe", symbolName = Ident () "Just", typeName = Ident () "Maybe"},
                          Constructor {symbolModule = ModuleName () "Data.Maybe", symbolName = Ident () "Nothing", typeName = Ident () "Maybe"},
                          Data {symbolModule = ModuleName () "Data.Maybe", symbolName = Ident () "Maybe"},

@@ -5,7 +5,7 @@
 {-# OPTIONS -Wall -fno-warn-orphans #-}
 
 module Refactor.Reify
-    ( moduleSymbols
+    ( findModuleSymbols
     ) where
 
 import Control.Monad.State (modify, runStateT, StateT)
@@ -28,8 +28,8 @@ $(deriveLiftMany [''Hint.ModuleElem, ''Exts.ModuleName, ''Names.Symbol, ''Exts.N
 -- learn everything about those symbols, and then converting that info
 -- to the @haskell-names@ 'Symbol' type.  The results should compare to
 -- the output of 'loadBase'.
-moduleSymbols :: String -> ExpQ -- Q [Symbol]
-moduleSymbols defmod = do
+findModuleSymbols :: String -> ExpQ -- Q [Symbol]
+findModuleSymbols defmod = do
   modelems <- either (error . show) id <$> runIO (runInterpreter (getModuleExports defmod))
   symbols <- concat <$> mapM (moduleElemSymbols defmod) modelems :: Q [Symbol]
   lift symbols
