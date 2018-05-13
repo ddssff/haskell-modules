@@ -24,7 +24,6 @@ import Data.Generics
 import Data.Graph.Inductive (Gr, NodeMap)
 import Data.Maybe (mapMaybe)
 import Data.Set as Set (difference, filter, empty, fromList, insert, intersection, map, member, null, Set, toList, union, unions)
-import Language.Haskell.Exts.Comments (Comment(..))
 import Language.Haskell.Exts.SrcLoc
 import Language.Haskell.Exts.Syntax
 import Language.Haskell.Names (Scoped(..), Symbol)
@@ -33,7 +32,6 @@ import Language.Haskell.Names.ModuleSymbols (getTopDeclSymbols)
 import Language.Haskell.Names.SyntaxUtils -- (dropAnn, getImports, getModuleDecls)
 import Refactor.FGL
 import Refactor.Info
-import Refactor.Parse (unScope)
 import Refactor.Utils
 
 -- | Split a graph into two components, those reachable from any of the
@@ -73,13 +71,12 @@ withDecomposedModule ::
         -> (Decl (Scoped SrcSpanInfo) -> Bool)
         -> (ExportSpec (Scoped SrcSpanInfo) -> Bool)
         -> (ImportSpecWithDecl (Scoped SrcSpanInfo) -> Bool)
-        -> (Comment -> Bool) -> r)
+        -> r)
     -> ModuleInfo (Scoped SrcSpanInfo) -> [r]
 withDecomposedModule decompose f i@(ModuleInfo {_module = Module _l _h _ps _is _ds, _moduleComments = _cs}) =
-    fmap (uncurry4 (f i)) (zip4 (fmap (flip Set.member) selectedDecls)
+    fmap (uncurry3 (f i)) (zip3 (fmap (flip Set.member) selectedDecls)
                                 (fmap (flip Set.member) selectedExports)
-                                (fmap (flip Set.member) selectedImports)
-                                (fmap (flip Set.member) selectedComments))
+                                (fmap (flip Set.member) selectedImports))
     where
       selectedDecls :: [Set (Decl (Scoped SrcSpanInfo))]
       selectedDecls = partitionDeclsBy decompose i
@@ -87,11 +84,13 @@ withDecomposedModule decompose f i@(ModuleInfo {_module = Module _l _h _ps _is _
       selectedExports = fmap (exportsToKeep i) selectedDecls
       selectedImports :: [Set (ImportSpecWithDecl (Scoped SrcSpanInfo))]
       selectedImports = fmap (uncurry (importsToKeep i)) (zip selectedDecls selectedExports)
+{-
       selectedComments = fmap (uncurry (filterComments (fmap (srcInfoSpan . unScope) i)))
                            (zip (fmap (Set.map (fmap (srcInfoSpan . unScope))) selectedDecls)
                                 (fmap (Set.map (fmap (srcInfoSpan . unScope))) selectedExports))
+-}
 withDecomposedModule _decompose f i@(ModuleInfo {_module = _m}) =
-    [f i (const True) (const True) (const True)  (const True)]
+    [f i (const True) (const True) (const True)]
 
 -- | Partition a module's declarations according to the graph of connected components
 -- in the "declares - uses" graph.
@@ -200,6 +199,7 @@ importsToKeep i@(ModuleInfo {_module = Module _ _ _ is _}) ds es =
         else r
 importsToKeep _ _ _ = error "importsToKeep"
 
+{-
 -- | We now have sets describing which declarations to keep and which
 -- export specs to keep.  This function partitions the comment list.
 -- (Comments associated with the header outside the export list are
@@ -253,6 +253,7 @@ filterComments (ModuleInfo {_module = Module _l h _ps _is ds, _moduleComments = 
       scanDecls [] cs' r = reverse r ++ cs'
       scanDecls _ [] r = reverse r
 filterComments _ _ _ = error "filterComments"
+-}
 
 -- | Symbols declared by a declaration.  (Should take a single element, not a set.)
 declares :: (Data l, Eq l) => ModuleInfo l -> Decl l -> Set Symbol

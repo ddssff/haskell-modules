@@ -1,45 +1,40 @@
-{-# LANGUAGE CPP #-}
+{-# LANGUAGE CPP, TemplateHaskell #-}
+{-# OPTIONS -Wall -fno-warn-missing-signatures -fno-warn-type-defaults #-}
 
-module Refactor.Tests where
+module Main where
 
+import Control.Monad (when)
 import Data.Default (def)
 import Data.Function (on)
 import Data.Graph.Inductive (grev)
 import Data.List (sortBy)
 import Data.Map as Map (lookup)
 import Data.Set as Set (difference, fromList, toList, unions)
-import Language.Haskell.Exts (Decl, Name(Ident))
-import Language.Haskell.Exts.ExactPrint (exactPrint)
-import Language.Haskell.Exts.SrcLoc (SrcSpanInfo(..))
-import Language.Haskell.Exts.Syntax (Module(..), ModuleHead(ModuleHead), ModuleName(ModuleName))
+import Language.Haskell.Exts (Name(Ident))
+import Language.Haskell.Exts.Syntax (ModuleName(ModuleName))
 import qualified Language.Haskell.Exts.Syntax as Exts
 import Language.Haskell.Interpreter (runInterpreter, getModuleExports{-, InterpreterError-})
 import qualified Language.Haskell.Interpreter as Hint (ModuleElem(..))
-import Language.Haskell.Names (annotate, loadBase, ppSymbol, resolve, Scoped(..), Symbol(..))
-import Language.Haskell.Names as Names -- (loadBase, Symbol(..))
+import Language.Haskell.Names (loadBase, ppSymbol, Symbol(..))
 import Language.Haskell.TH.Syntax (lift, runIO)
 import qualified Language.Haskell.TH.Syntax as TH
-import Language.Haskell.Exts.Syntax (Name(..), ModuleName(..))
-import qualified Language.Haskell.Exts.Syntax as Exts
-import Language.Haskell.Interpreter (runInterpreter, getModuleExports{-, InterpreterError-})
-import qualified Language.Haskell.Interpreter as Hint (ModuleElem(..))
-import Language.Haskell.Names as Names -- (loadBase, Symbol(..))
-import Language.Haskell.TH (ExpQ)
+import Language.Haskell.Exts.Syntax (Name(..))
 import Language.Haskell.TH.Instances ()
-import Language.Haskell.TH.Lift (lift)
-import Language.Haskell.TH.Syntax (Dec(..), Q, lookupValueName, lookupTypeName, reify, reifyModule, runIO, Info(..), ModName(..), PkgName(..), Name(..), OccName(..), NameFlavour(..), NameSpace(..))
-import qualified Language.Haskell.TH.Syntax as TH
+import Language.Haskell.TH.Syntax (ModName(..), PkgName(..))
 import Prelude hiding (lookup)
 import Refactor.FGL (components)
-import Refactor.Filter (filterModule)
-import Refactor.Info
-import Refactor.Orphans
-import Refactor.Parse (parseAndAnnotateModules, unScope)
+import Refactor.Orphans ()
+import Refactor.Parse (parseAndAnnotateModules)
 import Refactor.Reify (moduleSymbols)
 import Refactor.Render (renderModule)
 import Refactor.Split (bisect, declares, DeclGroup(unDecs), withDecomposedModule)
 import System.IO (readFile, writeFile)
-import Test.HUnit
+import Test.HUnit hiding (path)
+
+main :: IO ()
+main = do
+  cs@(Counts {errors = es, failures = fs}) <- runTestTT tests
+  when (es > 0 || fs > 0) (error (showCounts cs))
 
 demo1 = do
   [i] <- let path = "src/Refactor/FGL.hs" in readFile path >>= \text -> parseAndAnnotateModules def [(path, text)]
@@ -59,22 +54,10 @@ demo4 = do
   [i] <- let path = "src/Refactor/FGL.hs" in readFile path >>= \text -> parseAndAnnotateModules def [(path, text)]
   mapM_ (\(s, n) -> writeFile ("Tmp" ++ show n ++ ".hs") s) (zip (withDecomposedModule (bisect (\d -> any (testSymbolString (== "Refactor.FGL.context")) (Set.unions (fmap (declares i) (unDecs d)))) . grev) renderModule i) [1..])
 
-testSymbolString p s = {-trace ("p " ++ show s ++ " -> " ++ show (p (ppSymbol s)))-} (p (ppSymbol s))
-
-#if 0
-prelude :: TH.Module
-prelude = TH.Module (PkgName "base") (ModName "Prelude")
-#endif
-{-
-load :: TH.Module () -> [[Symbol]]
-load m@(Module (PkgName p) (ModName n)) =
-    reifyModule m >>= \(ModuleInfo ms) -> (map (undefined ::
-(() (Just (ModuleHead () name _warning _exports) h ps is ds) =
-    reifyModule (TH.Module ()
--}
+testSymbolString p s = p (ppSymbol s)
 
 tests :: Test
-tests = TestList [test1, test2, test3, test4]
+tests = TestList [test1, test2, test3, test4, test5]
 
 test1 :: Test
 test1 = TestCase (assertEqual "reifyModule Prelude"
@@ -402,30 +385,95 @@ test4 = TestCase (assertEqual "loadBase GHC.Types"
                            Constructor {symbolModule = ModuleName () "GHC.Types", symbolName = Ident () "IO", typeName = Ident () "IO"}])
                     (Map.lookup (Exts.ModuleName () "GHC.Types") $(runIO loadBase >>= lift)))
 
-{-
-monad = ModuleInfo [Module (PkgName "base") (ModName "Data.Foldable"),
-                    Module (PkgName "base") (ModName "Data.Functor"),
-                    Module (PkgName "base") (ModName "Data.Traversable"),
-                    Module (PkgName "base") (ModName "GHC.Base"),
-                    Module (PkgName "base") (ModName "GHC.List"),
-                    Module (PkgName "base") (ModName "GHC.Num"),
-                    Module (PkgName "ghc-prim") (ModName "GHC.Classes"),
-                    Module (PkgName "ghc-prim") (ModName "GHC.Types")]
 
-base = ModuleInfo [Module (PkgName "base") (ModName "GHC.Err"),
-                   Module (PkgName "base") (ModName "GHC.IO"),
-                   Module (PkgName "ghc-prim") (ModName "GHC.CString"),
-                   Module (PkgName "ghc-prim") (ModName "GHC.Classes"),
-                   Module (PkgName "ghc-prim") (ModName "GHC.Magic"),
-                   Module (PkgName "ghc-prim") (ModName "GHC.Prim"),
-                   Module (PkgName "ghc-prim") (ModName "GHC.Tuple"),
-                   Module (PkgName "ghc-prim") (ModName "GHC.Types"),
-                   Module (PkgName "integer-gmp") (ModName "GHC.Integer")]
--}
-
+-- A lot of changes since the prelude included with the haskell-names
+-- package.  The whole Data.Foldable thing happened, and Monoid, and
+-- Applicative.
 test5 :: Test
 test5 = TestCase (do let syms1 = Set.fromList $ maybe (error "test5") id $ Map.lookup (Exts.ModuleName () "Prelude") $(runIO loadBase >>= lift)
                          syms2 = Set.fromList $ $(moduleSymbols "Prelude")
-                     assertEqual "loadBase vs moduleSymbols 1" (mempty, mempty)
+                     assertEqual "loadBase vs moduleSymbols 1"
+                       ([Constructor {symbolModule = ModuleName () "Data.Maybe", symbolName = Ident () "Just", typeName = Ident () "Maybe"},
+                         Constructor {symbolModule = ModuleName () "Data.Maybe", symbolName = Ident () "Nothing", typeName = Ident () "Maybe"},
+                         Data {symbolModule = ModuleName () "Data.Maybe", symbolName = Ident () "Maybe"},
+                         Value {symbolModule = ModuleName () "Control.Monad", symbolName = Ident () "mapM"},
+                         Value {symbolModule = ModuleName () "Control.Monad", symbolName = Ident () "mapM_"},
+                         Value {symbolModule = ModuleName () "Control.Monad", symbolName = Ident () "sequence"},
+                         Value {symbolModule = ModuleName () "Control.Monad", symbolName = Ident () "sequence_"},
+                         Value {symbolModule = ModuleName () "Control.Monad", symbolName = Symbol () "=<<"},
+                         Value {symbolModule = ModuleName () "Data.List", symbolName = Ident () "foldl1"},
+                         Value {symbolModule = ModuleName () "Data.List", symbolName = Ident () "lines"},
+                         Value {symbolModule = ModuleName () "Data.List", symbolName = Ident () "maximum"},
+                         Value {symbolModule = ModuleName () "Data.List", symbolName = Ident () "minimum"},
+                         Value {symbolModule = ModuleName () "Data.List", symbolName = Ident () "product"},
+                         Value {symbolModule = ModuleName () "Data.List", symbolName = Ident () "sum"},
+                         Value {symbolModule = ModuleName () "Data.List", symbolName = Ident () "unlines"},
+                         Value {symbolModule = ModuleName () "Data.List", symbolName = Ident () "unwords"},
+                         Value {symbolModule = ModuleName () "Data.List", symbolName = Ident () "words"},
+                         Value {symbolModule = ModuleName () "GHC.Base", symbolName = Ident () "foldr"},
+                         Value {symbolModule = ModuleName () "GHC.List", symbolName = Ident () "all"},
+                         Value {symbolModule = ModuleName () "GHC.List", symbolName = Ident () "and"},
+                         Value {symbolModule = ModuleName () "GHC.List", symbolName = Ident () "any"},
+                         Value {symbolModule = ModuleName () "GHC.List", symbolName = Ident () "concat"},
+                         Value {symbolModule = ModuleName () "GHC.List", symbolName = Ident () "concatMap"},
+                         Value {symbolModule = ModuleName () "GHC.List", symbolName = Ident () "elem"},
+                         Value {symbolModule = ModuleName () "GHC.List", symbolName = Ident () "foldl"},
+                         Value {symbolModule = ModuleName () "GHC.List", symbolName = Ident () "foldr1"},
+                         Value {symbolModule = ModuleName () "GHC.List", symbolName = Ident () "length"},
+                         Value {symbolModule = ModuleName () "GHC.List", symbolName = Ident () "lookup"},
+                         Value {symbolModule = ModuleName () "GHC.List", symbolName = Ident () "notElem"},
+                         Value {symbolModule = ModuleName () "GHC.List", symbolName = Ident () "null"},
+                         Value {symbolModule = ModuleName () "GHC.List", symbolName = Ident () "or"},
+                         Value {symbolModule = ModuleName () "Prelude", symbolName = Symbol () "$!"}],
+                        [Class {symbolModule = ModuleName () "Data.Foldable", symbolName = Ident () "Foldable"},
+                         Class {symbolModule = ModuleName () "Data.Traversable", symbolName = Ident () "Traversable"},
+                         Class {symbolModule = ModuleName () "GHC.Base", symbolName = Ident () "Applicative"},
+                         Class {symbolModule = ModuleName () "GHC.Base", symbolName = Ident () "Monoid"},
+                         Constructor {symbolModule = ModuleName () "GHC.Base", symbolName = Ident () "Just", typeName = Ident () "Maybe"},
+                         Constructor {symbolModule = ModuleName () "GHC.Base", symbolName = Ident () "Nothing", typeName = Ident () "Maybe"},
+                         Data {symbolModule = ModuleName () "GHC.Base", symbolName = Ident () "Maybe"},
+                         Data {symbolModule = ModuleName () "GHC.Types", symbolName = Ident () "Word"},
+                         Method {symbolModule = ModuleName () "Data.Foldable", symbolName = Ident () "elem", className = Ident () "Foldable"},
+                         Method {symbolModule = ModuleName () "Data.Foldable", symbolName = Ident () "foldMap", className = Ident () "Foldable"},
+                         Method {symbolModule = ModuleName () "Data.Foldable", symbolName = Ident () "foldl", className = Ident () "Foldable"},
+                         Method {symbolModule = ModuleName () "Data.Foldable", symbolName = Ident () "foldl1", className = Ident () "Foldable"},
+                         Method {symbolModule = ModuleName () "Data.Foldable", symbolName = Ident () "foldr", className = Ident () "Foldable"},
+                         Method {symbolModule = ModuleName () "Data.Foldable", symbolName = Ident () "foldr1", className = Ident () "Foldable"},
+                         Method {symbolModule = ModuleName () "Data.Foldable", symbolName = Ident () "length", className = Ident () "Foldable"},
+                         Method {symbolModule = ModuleName () "Data.Foldable", symbolName = Ident () "maximum", className = Ident () "Foldable"},
+                         Method {symbolModule = ModuleName () "Data.Foldable", symbolName = Ident () "minimum", className = Ident () "Foldable"},
+                         Method {symbolModule = ModuleName () "Data.Foldable", symbolName = Ident () "null", className = Ident () "Foldable"},
+                         Method {symbolModule = ModuleName () "Data.Foldable", symbolName = Ident () "product", className = Ident () "Foldable"},
+                         Method {symbolModule = ModuleName () "Data.Foldable", symbolName = Ident () "sum", className = Ident () "Foldable"},
+                         Method {symbolModule = ModuleName () "Data.Traversable", symbolName = Ident () "mapM", className = Ident () "Traversable"},
+                         Method {symbolModule = ModuleName () "Data.Traversable", symbolName = Ident () "sequence", className = Ident () "Traversable"},
+                         Method {symbolModule = ModuleName () "Data.Traversable", symbolName = Ident () "sequenceA", className = Ident () "Traversable"},
+                         Method {symbolModule = ModuleName () "Data.Traversable", symbolName = Ident () "traverse", className = Ident () "Traversable"},
+                         Method {symbolModule = ModuleName () "GHC.Base", symbolName = Ident () "mappend", className = Ident () "Monoid"},
+                         Method {symbolModule = ModuleName () "GHC.Base", symbolName = Ident () "mconcat", className = Ident () "Monoid"},
+                         Method {symbolModule = ModuleName () "GHC.Base", symbolName = Ident () "mempty", className = Ident () "Monoid"},
+                         Method {symbolModule = ModuleName () "GHC.Base", symbolName = Ident () "pure", className = Ident () "Applicative"},
+                         Method {symbolModule = ModuleName () "GHC.Base", symbolName = Symbol () "*>", className = Ident () "Applicative"},
+                         Method {symbolModule = ModuleName () "GHC.Base", symbolName = Symbol () "<$", className = Ident () "Functor"},
+                         Method {symbolModule = ModuleName () "GHC.Base", symbolName = Symbol () "<*", className = Ident () "Applicative"},
+                         Method {symbolModule = ModuleName () "GHC.Base", symbolName = Symbol () "<*>", className = Ident () "Applicative"},
+                         Value {symbolModule = ModuleName () "Data.Foldable", symbolName = Ident () "all"},
+                         Value {symbolModule = ModuleName () "Data.Foldable", symbolName = Ident () "and"},
+                         Value {symbolModule = ModuleName () "Data.Foldable", symbolName = Ident () "any"},
+                         Value {symbolModule = ModuleName () "Data.Foldable", symbolName = Ident () "concat"},
+                         Value {symbolModule = ModuleName () "Data.Foldable", symbolName = Ident () "concatMap"},
+                         Value {symbolModule = ModuleName () "Data.Foldable", symbolName = Ident () "mapM_"},
+                         Value {symbolModule = ModuleName () "Data.Foldable", symbolName = Ident () "notElem"},
+                         Value {symbolModule = ModuleName () "Data.Foldable", symbolName = Ident () "or"},
+                         Value {symbolModule = ModuleName () "Data.Foldable", symbolName = Ident () "sequence_"},
+                         Value {symbolModule = ModuleName () "Data.Functor", symbolName = Symbol () "<$>"},
+                         Value {symbolModule = ModuleName () "Data.Map.Base", symbolName = Ident () "lookup"},
+                         Value {symbolModule = ModuleName () "Data.OldList", symbolName = Ident () "lines"},
+                         Value {symbolModule = ModuleName () "Data.OldList", symbolName = Ident () "unlines"},
+                         Value {symbolModule = ModuleName () "Data.OldList", symbolName = Ident () "unwords"},
+                         Value {symbolModule = ModuleName () "Data.OldList", symbolName = Ident () "words"},
+                         Value {symbolModule = ModuleName () "GHC.Base", symbolName = Symbol () "$!"},
+                         Value {symbolModule = ModuleName () "GHC.Base", symbolName = Symbol () "=<<"},
+                         Value {symbolModule = ModuleName () "GHC.Err", symbolName = Ident () "errorWithoutStackTrace"}])
                        (sortBy (compare `on` show) (Set.toList (Set.difference syms1 syms2)),
                         sortBy (compare `on` show) (Set.toList (Set.difference syms2 syms1))))

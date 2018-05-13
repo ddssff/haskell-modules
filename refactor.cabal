@@ -37,7 +37,6 @@ Library
   Exposed-Modules:
     Refactor.CPP
     Refactor.FGL
-    Refactor.Filter
     Refactor.Info
     Refactor.Parse
     Refactor.Orphans
@@ -46,3 +45,21 @@ Library
     Refactor.Split
     Refactor.SrcLoc
     Refactor.Utils
+
+Test-Suite refactor-tests
+  Default-Language: Haskell2010
+  Type: exitcode-stdio-1.0
+  Main-Is: Tests.hs
+  Build-Depends:
+    base,
+    containers,
+    data-default,
+    fgl,
+    haskell-names,
+    haskell-src-exts,
+    hint,
+    HUnit,
+    refactor,
+    template-haskell,
+    th-lift,
+    th-orphans

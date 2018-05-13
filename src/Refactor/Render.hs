@@ -1,3 +1,5 @@
+-- | Turn modules with added and removed elements back into text.
+
 {-# LANGUAGE CPP, FlexibleContexts, RankNTypes, ScopedTypeVariables, TemplateHaskell, TypeFamilies #-}
 
 module Refactor.Render
@@ -6,81 +8,84 @@ module Refactor.Render
 
 import Control.Lens (makeLenses, over, set, view)
 import Control.Monad.RWS
-import Data.Default (Default(def))
-import Debug.Trace (trace)
-import Language.Haskell.Exts.Comments (Comment(..))
 import Language.Haskell.Exts.SrcLoc
 import Language.Haskell.Exts.Syntax
 import Language.Haskell.Names (Scoped)
-import Language.Haskell.Names.GlobalSymbolTable as Global (Table)
 import Prelude hiding (span)
 import Refactor.Info (ImportSpecWithDecl, ModuleInfo(..))
 import Refactor.Parse (unScope)
 import Refactor.SrcLoc
 
-sinf :: (Annotated ast) => ast (Scoped SrcSpanInfo) -> SrcSpanInfo
-sinf = unScope . ann
-
-span :: (Annotated ast) => ast (Scoped SrcSpanInfo) -> SrcSpan
-span = srcInfoSpan . sinf
-
-spanStart :: (Annotated ast) => ast (Scoped SrcSpanInfo) -> (Int, Int)
-spanStart = srcSpanStart . span
-
-spanEnd :: (Annotated ast) => ast (Scoped SrcSpanInfo) -> (Int, Int)
-spanEnd = srcSpanEnd . span
-
-data RenderInfo
+-- | State information for the renderer.
+data RenderInfo l
     = RenderInfo
-      { _verbosity :: Int
+      { _moduleInfo :: ModuleInfo (Scoped l)
+      , _verbosity :: Int
       , _prefix :: String
       , _label :: String }
 
-instance Default RenderInfo where def = RenderInfo 0 "" ""
-
 $(makeLenses ''RenderInfo)
 
-verbosely :: MonadReader RenderInfo m => Int -> m a -> m a
+initRenderInfo :: ModuleInfo (Scoped l) -> RenderInfo l
+initRenderInfo i = RenderInfo i 0 "" ""
+
+verbosely :: MonadReader (RenderInfo l) m => Int -> m a -> m a
 verbosely level action = local (set verbosity level) action
 
-prefixed :: MonadReader RenderInfo m => String -> m a -> m a
+prefixed :: MonadReader (RenderInfo l) m => String -> m a -> m a
 prefixed str action = local (over prefix (++ str)) action
 
-labelled :: MonadReader RenderInfo m => String -> m a -> m a
+labelled :: MonadReader (RenderInfo l) m => String -> m a -> m a
 labelled str action = local (set label str) action
 
+-- | Render the module, applying these predicates to filter the
+-- module's elements and adjusting the whitespace and other formatting
+-- so that the result is as close to a "desirable" format as possible.
 renderModule ::
   forall l. (l ~ SrcSpanInfo)
   => ModuleInfo (Scoped l)
   -> (Decl (Scoped l) -> Bool)
   -> (ExportSpec (Scoped l) -> Bool)
   -> (ImportSpecWithDecl (Scoped l) -> Bool)
-  -> (Comment -> Bool)
   -> String
-renderModule i@(ModuleInfo {_module = Module _l h ps is ds, _moduleComments = _cs}) selectedDecls selectedExports selectedImports selectedComments =
-  snd $ execRWS (pre >> scanPragmas >> scanHeader h >> mapM_ scanImport is >> scanDecls >> post) (def {_verbosity = 0}) (1, 1)
+renderModule i@(ModuleInfo {_module = Module _l h ps is ds, _moduleComments = _cs})
+             selectedDecls selectedExports selectedImports =
+  snd $ execRWS (pre >> scanPragmas >> scanHeader h >> mapM_ scanImport is >> scanDecls >> post)
+          ((initRenderInfo i) {_verbosity = 0}) (1, 1)
   where
     (SrcSpanInfo (SrcSpan _ msl msc mel mec) _) = _moduleSpan i
+    -- keep everything up to the start of the overall module span - probably nothing?
     pre = keep (msl, msc)
+    -- Keep all the pragmas
     scanPragmas = mapM_ (keep . spanEnd) ps
-    scanHeader :: Maybe (ModuleHead (Scoped l)) -> RWS RenderInfo String (Int, Int) ()
+
+    scanHeader :: Maybe (ModuleHead (Scoped l)) -> RWS (RenderInfo l) String (Int, Int) ()
+    -- If there is no "module" declaration continue to the imports
     scanHeader Nothing = return ()
+    -- If there is, continue to the exports and scan them
     scanHeader (Just h'@(ModuleHead _ n w me)) = do
       keep (spanEnd n)
-      maybe (return ()) (keep . spanEnd) w
+      maybe (return ()) (keep . spanEnd) w -- continue to the export list
       maybe (return ()) scanExports me
       keep (spanEnd h')
 
-    scanExports :: ExportSpecList (Scoped l) -> RWS RenderInfo String (Int, Int) ()
+    scanExports :: ExportSpecList (Scoped l) -> RWS (RenderInfo l) String (Int, Int) ()
     scanExports esl@(ExportSpecList _ es) = do
-      let si = unScope $ ann esl
-      case srcInfoPoints si of
-        [] -> keepV "es" (spanStart esl)
+      -- Keep the text between the start of the import list and the
+      -- start of the first export.  Then scan each exports.
+      case srcInfoPoints (sinf esl) of
+        [] -> keep (spanStart esl)
         (p : _ps) -> keep (srcSpanStart p)
       _ <- foldM scanExport True es
       keep (spanEnd esl)
-    scanExport :: Bool -> ExportSpec (Scoped l) -> RWS RenderInfo String (Int, Int) Bool
+
+    scanExport :: Bool -> ExportSpec (Scoped l) -> RWS (RenderInfo l) String (Int, Int) Bool
     scanExport prev e =
+        -- This case handles the text between two imports depending on
+        -- whether the previous one was kept or omitted, and whether
+        -- the current one is to be kept or omitted.  FIXME: this will
+        -- often leave a trailing comma at the end of the filtered
+        -- export list, which (surprisingly) is accepted by GHC.
         case selectedExports e of
           True -> do
             (if prev then keep else skip) (spanStart e)
@@ -88,11 +93,15 @@ renderModule i@(ModuleInfo {_module = Module _l h ps is ds, _moduleComments = _c
             return True
           False -> do
             (if prev then keep else skip) (spanStart e)
-            skip {-"ex"-} (spanEnd e)
+            skip (spanEnd e)
             return False
 
-    scanImport :: ImportDecl (Scoped l) -> RWS RenderInfo String (Int, Int) ()
+    -- Imports have two parts - a decl and zero or more specs.  The
+    -- filtering is done based on (decl, spec) pairs.
+    scanImport :: ImportDecl (Scoped l) -> RWS (RenderInfo l) String (Int, Int) ()
+    -- An unqualified module import
     scanImport idecl@(ImportDecl {importSpecs = Nothing}) = keep (spanEnd idecl)
+    -- An import hiding
     scanImport idecl@(ImportDecl {importSpecs = Just (ImportSpecList _ True _)}) = keep (spanEnd idecl)
 #if 1
     scanImport idecl@(ImportDecl {importSpecs = Just (ImportSpecList _ False _)}) = keep (spanEnd idecl)
@@ -122,7 +131,7 @@ renderModule i@(ModuleInfo {_module = Module _l h ps is ds, _moduleComments = _c
 -}
     scanDecls = foldM scanDecl True ds
 
-    scanDecl :: Bool -> Decl (Scoped l) -> RWS RenderInfo String (Int, Int) Bool
+    scanDecl :: Bool -> Decl (Scoped l) -> RWS (RenderInfo l) String (Int, Int) Bool
     scanDecl prev d =
         case selectedDecls d of
           True -> do
@@ -139,34 +148,51 @@ renderModule i@(ModuleInfo {_module = Module _l h ps is ds, _moduleComments = _c
                        True -> keepV "7" (srcSpanEnd (srcInfoSpan (ann d)))) ds
 -}
     post = keep (mel, mec)
+renderModule _ _ _ _ = error "renderModule"
 
-    skip :: (Int, Int) -> RWS RenderInfo String (Int, Int) ()
-    skip = put
+skip :: (Int, Int) -> RWS (RenderInfo l) String (Int, Int) ()
+skip = put
 
-    skipV :: (Int, Int) -> RWS RenderInfo String (Int, Int) ()
-    skipV st = do
-      here <- get
-      v <- view verbosity
-      l <- view label
-      when (v > 0 && here /= st) (tell ("[" ++ l ++ " - skipping from " ++ show here ++ " to " ++ show st ++ "]"))
-      put st
+skipV :: (Int, Int) -> RWS (RenderInfo l) String (Int, Int) ()
+skipV st = do
+  here <- get
+  v <- view verbosity
+  l <- view label
+  when (v > 0 && here /= st) (tell ("[" ++ l ++ " - skipping from " ++ show here ++ " to " ++ show st ++ "]"))
+  put st
 
-    keep :: (Int, Int) -> RWS RenderInfo String (Int, Int) ()
-    keep (el, ec) = do
-      (l', c) <- get
-      tell (textOfSpan (SrcSpan "" l' c el ec) (_moduleText i))
-      put (el, ec)
+keep :: (Int, Int) -> RWS (RenderInfo l) String (Int, Int) ()
+keep (el, ec) = do
+  i <- view moduleInfo
+  (l', c) <- get
+  tell (textOfSpan (SrcSpan "" l' c el ec) (_moduleText i))
+  put (el, ec)
 
-    keepV :: String -> (Int, Int) -> RWS RenderInfo String (Int, Int) ()
-    keepV n s = tell ("[" ++ n) >> keep s >> tell "]"
+keepV :: String -> (Int, Int) -> RWS (RenderInfo l) String (Int, Int) ()
+keepV n s = tell ("[" ++ n) >> keep s >> tell "]"
 
-    keep' :: String -> SrcSpan -> RWS RenderInfo String (Int, Int) ()
-    keep' n s = do
-      labelled "k" $ skip (srcSpanStart s)
-      tell ("[" ++ n)
-      keep (srcSpanEnd s)
-      tell "]"
+keep' :: String -> SrcSpan -> RWS (RenderInfo l) String (Int, Int) ()
+keep' n s = do
+  labelled "k" $ skip (srcSpanStart s)
+  tell ("[" ++ n)
+  keep (srcSpanEnd s)
+  tell "]"
 
-    keep'' :: SrcSpan -> RWS RenderInfo String (Int, Int) ()
-    keep'' s = tell "[" >> keep (srcSpanStart s) >> keep (srcSpanEnd s) >> tell "]"
-renderModule _ _ _ _ _ = error "renderModule"
+keep'' :: SrcSpan -> RWS (RenderInfo l) String (Int, Int) ()
+keep'' s = tell "[" >> keep (srcSpanStart s) >> keep (srcSpanEnd s) >> tell "]"
+
+-- | Get a 'SrcSpanInfo' from the annotation.
+sinf :: (Annotated ast) => ast (Scoped SrcSpanInfo) -> SrcSpanInfo
+sinf = unScope . ann
+
+-- | Get a 'SrcSpan' from the annotation.
+span :: (Annotated ast) => ast (Scoped SrcSpanInfo) -> SrcSpan
+span = srcInfoSpan . sinf
+
+-- | Get the 'SrcSpan' start point from the annotation.
+spanStart :: (Annotated ast) => ast (Scoped SrcSpanInfo) -> (Int, Int)
+spanStart = srcSpanStart . span
+
+-- | Get the 'SrcSpan' end point from the annotation.
+spanEnd :: (Annotated ast) => ast (Scoped SrcSpanInfo) -> (Int, Int)
+spanEnd = srcSpanEnd . span

@@ -2,6 +2,7 @@
 
 {-# LANGUAGE BangPatterns, CPP, FlexibleInstances, PackageImports, ScopedTypeVariables, TemplateHaskell, UndecidableInstances #-}
 {-# OPTIONS_GHC -Wall -fno-warn-orphans #-}
+
 module Refactor.SrcLoc
     ( -- * SpanInfo queries
 --      EndLoc(endLoc)
@@ -70,12 +71,14 @@ spanOfText path s =
     SrcSpanInfo {srcInfoSpan = mkSrcSpan (SrcLoc path 1 1) (SrcLoc path (srcLine end) (srcColumn end)),
                  srcInfoPoints = []}
 
+#if 0
 -- | Return the text before, within, and after a span
 textTripleOfSpan :: (SrcInfo a, EndLoc a) => a -> String -> (String, String, String)
 textTripleOfSpan sp s =
     let (pref, s') = splitText (getPointLoc sp) s in
     let (s'', suff) = splitText (locDiff (endLoc sp) (getPointLoc sp)) s' in
     (pref, s'', suff)
+#endif
 
 textOfSpan :: (SrcInfo a, EndLoc a) => a -> String -> String
 textOfSpan sp s =
@@ -83,12 +86,14 @@ textOfSpan sp s =
     let (s'', _) = splitText (locDiff (endLoc sp) (getPointLoc sp)) s' in
     s''
 
+#if 0
 testSpan :: (SrcInfo a, EndLoc a) => String -> a -> a
 testSpan msg sp =
     case (getPointLoc sp, endLoc sp) of
       (SrcLoc _ l1 c1, SrcLoc _ l2 c2) | c1 < 1 || c2 < 1 || l1 < 1 || l2 < 1 ||
                                          l2 < l1 || (l2 == l1 && c2 < c1) -> error ("testSpan - " ++ msg)
       _ -> sp
+#endif
 
 splitText :: SrcLoc -> String -> (String, String)
 splitText loc@(SrcLoc _ l0 c0) s0 =
@@ -116,6 +121,7 @@ splitText loc@(SrcLoc _ l0 c0) s0 =
                (EQ, EQ) -> pure (r, s)
                _ -> error ("splitText - invalid arguments: loc=" ++ show loc ++ ", s=" ++ show s0)
 
+#if 0
 -- | Using n locations split a string into n + 1 segments.
 -- splits (SrcLoc "" 80 20) [SrcLoc "" 80 22, SrcLoc "" 80 25, SrcLoc "" 81 4] "first line\nsecond line" ->
 --   [("fi",SrcSpan ""         80 20 80 22),
@@ -131,7 +137,7 @@ splits offset0@(SrcLoc file _ _) locs0@(_ : _) s0 =
           let (pre, suf) = splitText (locDiff loc offset) s in
           pre : f loc locs suf
 splits (SrcLoc _ _ _) [] _ = error "splits"
-
+#endif
 
 data Seg
     = Span (SrcLoc, SrcLoc) String
@@ -243,6 +249,7 @@ instance EndLoc (SrcLoc, SrcLoc) where
     endLoc = snd
     srcPoints _ = []
 
+#if 0
 endOfDecls :: EndLoc l => Module l -> SrcLoc
 endOfDecls m@(Module _l _mh _ps _ []) = endOfImports m
 endOfDecls (Module _l _mh _ps _is ds) = endLoc (ann (last ds))
@@ -269,6 +276,7 @@ endOfPragmas :: EndLoc l => Module l -> SrcLoc
 endOfPragmas (Module l _ [] _ _) = endLoc l
 endOfPragmas (Module _l _ ps _ _) = endLoc (ann (last ps))
 endOfPragmas _ = error "endOfPragmas"
+#endif
 
 -- | Modify end locations so they precede any trailing whitespace
 mapTopAnnotations :: forall a. (a -> a) -> Module a -> Module a

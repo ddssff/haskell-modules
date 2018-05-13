@@ -1,14 +1,10 @@
 {-# LANGUAGE TemplateHaskell #-}
+{-# OPTIONS -fno-warn-orphans #-}
 
 module Refactor.Orphans () where
 
 import Text.PrettyPrint.HughesPJClass (Pretty(pPrint), text)
-import Language.Haskell.Exts as Exts (ModuleName)
 import Language.Haskell.Exts.SrcLoc
-import Language.Haskell.Exts.Syntax (Name)
-import Language.Haskell.Interpreter
-import Language.Haskell.Names (Symbol)
-import Language.Haskell.TH.Lift
 import Data.Monoid ((<>))
 
 instance Pretty SrcLoc where
