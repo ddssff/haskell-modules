@@ -143,6 +143,9 @@ env7 = $(do mods7 <- runIO (loadModules
                               (fmap ("src/Refactor" </>)
                                  ["Utils.hs", "SrcLoc.hs", "Reify.hs", "Orphans.hs", "Info.hs", "FGL.hs", "Split.hs",
                                   "CPP.hs", "Parse.hs", "Render.hs", "IO.hs", "Imports.hs"]))
+            -- These symbols are bound to declarations that use
+            -- implicit parameters, and are therefore impossible to
+            -- reify (as of ghc-8.0 thru 8.4.)
             let special name = msum [ preludeSpecial name
                                     , nameMatch ("Control.Lens.Fold", "^?!") name
                                     , nameMatch ("Control.Lens.Fold", "^@?!") name

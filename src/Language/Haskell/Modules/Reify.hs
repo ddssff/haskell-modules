@@ -26,8 +26,8 @@ import Language.Haskell.TH.Syntax as TH
      Name(..), NameFlavour(..), NameSpace(..), OccName(..), PkgName(..), Q, reify, runIO, TypeFamilyHead(..))
 import System.IO (hPutStrLn, stderr)
 
--- | Class of ways we can select a 'Name' that is dangerous
--- to 'reify' and supply our own 'Info' for.
+-- | Class of ways we can select a (dangerous to reify) 'Name' and
+-- return the corresponding 'Info'.
 class NamePattern a where
     nameMatch :: a -> Name -> Maybe Info
 
