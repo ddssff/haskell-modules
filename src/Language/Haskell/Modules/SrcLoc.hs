@@ -3,7 +3,7 @@
 {-# LANGUAGE BangPatterns, CPP, FlexibleInstances, PackageImports, ScopedTypeVariables, TemplateHaskell, UndecidableInstances #-}
 {-# OPTIONS_GHC -Wall -fno-warn-orphans #-}
 
-module Refactor.SrcLoc
+module Language.Haskell.Modules.SrcLoc
     ( -- * SpanInfo queries
 --      EndLoc(endLoc)
 --    -- * Location and span info for a piece of text
@@ -39,8 +39,8 @@ import Data.List (dropWhileEnd)
 import Language.Haskell.Exts.Syntax
 import Language.Haskell.Exts.Comments (Comment(..))
 import Language.Haskell.Exts.SrcLoc (mkSrcSpan, SrcInfo(..), SrcLoc(..), SrcSpan(..), SrcSpanInfo(..))
+import Language.Haskell.Modules.Utils (lines')
 import Language.Haskell.Names
-import Refactor.Utils (lines')
 
 locDiff :: SrcLoc -> SrcLoc -> SrcLoc
 locDiff (SrcLoc file l1 c1) (SrcLoc _ l2 c2) =

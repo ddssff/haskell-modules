@@ -2,7 +2,7 @@
 
 {-# LANGUAGE CPP, FlexibleContexts, RankNTypes, ScopedTypeVariables, TemplateHaskell, TypeFamilies #-}
 
-module Refactor.Render
+module Language.Haskell.Modules.Render
     ( renderModule
     ) where
 
@@ -10,11 +10,11 @@ import Control.Lens (makeLenses, over, set, view)
 import Control.Monad.RWS
 import Language.Haskell.Exts.SrcLoc
 import Language.Haskell.Exts.Syntax
+import Language.Haskell.Modules.Info (ImportSpecWithDecl, ModuleInfo(..))
+import Language.Haskell.Modules.Parse (unScope)
+import Language.Haskell.Modules.SrcLoc
 import Language.Haskell.Names (Scoped)
 import Prelude hiding (span)
-import Refactor.Info (ImportSpecWithDecl, ModuleInfo(..))
-import Refactor.Parse (unScope)
-import Refactor.SrcLoc
 
 -- | State information for the renderer.
 data RenderInfo l

@@ -4,7 +4,7 @@
 {-# LANGUAGE CPP, FlexibleInstances, ScopedTypeVariables, TemplateHaskell #-}
 {-# OPTIONS -Wall -fno-warn-orphans #-}
 
-module Refactor.Reify
+module Language.Haskell.Modules.Reify
     ( NamePattern(nameMatch)
     , findModuleSymbols
     , preludeSpecial
@@ -16,6 +16,7 @@ import Data.List (isPrefixOf)
 import Data.Set as Set (insert, member, Set)
 import qualified Language.Haskell.Exts.Syntax as Exts
 import Language.Haskell.Interpreter as Hint (runInterpreter, getModuleExports, ModuleElem(..))
+import Language.Haskell.Modules.Utils (showName, singleton)
 import Language.Haskell.Names as Names (Symbol(..))
 import Language.Haskell.TH (ExpQ, runQ, Type(TupleT))
 import Language.Haskell.TH.Instances ()
@@ -23,7 +24,6 @@ import Language.Haskell.TH.Lift (deriveLiftMany, lift)
 import Language.Haskell.TH.Syntax as TH
     (Dec(..), Info(..), lookupValueName, lookupTypeName, ModName(..),
      Name(..), NameFlavour(..), NameSpace(..), OccName(..), PkgName(..), Q, reify, runIO, TypeFamilyHead(..))
-import Refactor.Utils (showName, singleton)
 import System.IO (hPutStrLn, stderr)
 
 -- | Class of ways we can select a 'Name' that is dangerous

@@ -1,17 +1,17 @@
 {-# LANGUAGE ScopedTypeVariables, TemplateHaskell #-}
 {-# OPTIONS -Wall #-}
 
-module Refactor.Imports
+module Language.Haskell.Modules.Imports
     ( buildEnvironment
     ) where
 
 import Data.Set as Set (difference, Set, toList)
 import Language.Haskell.Exts.Syntax (ImportDecl(..), Module, ModuleName(..))
+import Language.Haskell.Modules.Reify (findModuleSymbols)
+import Language.Haskell.Modules.Utils (mapFromList, setFromList)
 import Language.Haskell.Names.SyntaxUtils (dropAnn, getImports, getModuleName)
 import Language.Haskell.TH (ExpQ, Info, listE, Name, tupE)
 import Language.Haskell.TH.Lift (lift)
-import Refactor.Reify (findModuleSymbols)
-import Refactor.Utils (mapFromList, setFromList)
 
 -- | Build an environment that contains all the modules imported
 -- by any of the modules in the list.

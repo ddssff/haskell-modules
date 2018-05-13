@@ -1,6 +1,6 @@
 {-# OPTIONS -Wall #-}
 
-module Refactor.Utils where
+module Language.Haskell.Modules.Utils where
 
 import Control.Monad (MonadPlus, msum)
 import Data.Generics (Data, listify, Typeable)

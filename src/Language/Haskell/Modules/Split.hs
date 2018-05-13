@@ -9,7 +9,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS -Wall #-}
 
-module Refactor.Split
+module Language.Haskell.Modules.Split
     ( bisect
     , withDecomposedModule
     , withUsesGraph
@@ -26,13 +26,13 @@ import Data.Maybe (mapMaybe)
 import Data.Set as Set (difference, filter, empty, fromList, insert, intersection, map, member, null, Set, toList, union, unions)
 import Language.Haskell.Exts.SrcLoc
 import Language.Haskell.Exts.Syntax
+import Language.Haskell.Modules.FGL
+import Language.Haskell.Modules.Info
+import Language.Haskell.Modules.Utils
 import Language.Haskell.Names (Scoped(..), Symbol)
 import Language.Haskell.Names.GlobalSymbolTable as Global (lookupName)
 import Language.Haskell.Names.ModuleSymbols (getTopDeclSymbols)
 import Language.Haskell.Names.SyntaxUtils -- (dropAnn, getImports, getModuleDecls)
-import Refactor.FGL
-import Refactor.Info
-import Refactor.Utils
 
 -- | Split a graph into two components, those reachable from any of the
 -- nodes selected by the predicate, and the rest.  This is what you use

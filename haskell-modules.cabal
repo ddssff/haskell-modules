@@ -1,4 +1,4 @@
-Name: refactor
+Name: haskell-modules
 Version: 1.0.1
 Synopsis: Transformations on sets of Haskell modules
 Description: Split and merge modules, rename symbols, clean import lists
@@ -37,18 +37,18 @@ Library
     th-lift,
     th-orphans
   Exposed-Modules:
-    Refactor.CPP
-    Refactor.FGL
-    Refactor.Imports
-    Refactor.Info
-    Refactor.IO
-    Refactor.Parse
-    Refactor.Orphans
-    Refactor.Reify
-    Refactor.Render
-    Refactor.Split
-    Refactor.SrcLoc
-    Refactor.Utils
+    Language.Haskell.Modules.CPP
+    Language.Haskell.Modules.FGL
+    Language.Haskell.Modules.Imports
+    Language.Haskell.Modules.Info
+    Language.Haskell.Modules.IO
+    Language.Haskell.Modules.Parse
+    Language.Haskell.Modules.Orphans
+    Language.Haskell.Modules.Reify
+    Language.Haskell.Modules.Render
+    Language.Haskell.Modules.Split
+    Language.Haskell.Modules.SrcLoc
+    Language.Haskell.Modules.Utils
 
 Test-Suite refactor-tests
   Default-Language: Haskell2010

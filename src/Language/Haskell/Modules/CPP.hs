@@ -6,8 +6,9 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TemplateHaskell #-}
-module Refactor.CPP
-  ( Refactor.CPP.defaultParseMode
+
+module Language.Haskell.Modules.CPP
+  ( Language.Haskell.Modules.CPP.defaultParseMode
   , defaultCpphsOptions
   , turnOffLocations
   , GHCOpts(GHCOpts), hc, cppOptions, enabled, hashUndefs, hsSourceDirs, ghcOptions
@@ -378,7 +379,7 @@ test6c = TestCase $ do
 test7 :: Test
 test7 = TestCase $ do
           let ghcopts = def
-              pmode = Refactor.CPP.defaultParseMode ghcopts "<input>"
+              pmode = Language.Haskell.Modules.CPP.defaultParseMode ghcopts "<input>"
               cppopts :: CpphsOptions
               Right cppopts = parseOptions ["-DFOO", "-DMIN_VERSION_base(major1,major2,minor)=((major1)<4||(major1)==4&&(major2)<8||(major1)==4&&(major2)==8&&(minor)<=2)", "--nomacro", "--noline"]
               cppopts' = set (booloptsL . macrosL) False cppopts

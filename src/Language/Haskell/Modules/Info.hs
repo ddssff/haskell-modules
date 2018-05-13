@@ -6,7 +6,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS -Wall #-}
 
-module Refactor.Info
+module Language.Haskell.Modules.Info
     ( ModuleInfo(..)
     , ImportSpecWithDecl
     ) where

@@ -1,11 +1,13 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS -fno-warn-orphans #-}
 
-module Refactor.Orphans () where
+module Language.Haskell.Modules.Orphans () where
 
-import Text.PrettyPrint.HughesPJClass (Pretty(pPrint), text)
-import Language.Haskell.Exts.SrcLoc
+import Data.Default (Default(def))
+import Data.Graph.Inductive as G
 import Data.Monoid ((<>))
+import Language.Haskell.Exts.SrcLoc
+import Text.PrettyPrint.HughesPJClass (Pretty(pPrint), text)
 
 instance Pretty SrcLoc where
     pPrint l = text ("(l" <> show (srcLine l) ++ ",c" ++ show (srcColumn l) ++ ")")
@@ -16,3 +18,6 @@ instance Pretty SrcSpan where
 
 instance Pretty SrcSpanInfo where
     pPrint = pPrint . srcInfoSpan
+
+instance Default (G.Gr a b) where
+  def = G.empty

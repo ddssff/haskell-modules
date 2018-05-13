@@ -5,7 +5,7 @@
 
 {-# LANGUAGE CPP, FlexibleContexts, FlexibleInstances, ScopedTypeVariables, StandaloneDeriving #-}
 
-module Refactor.FGL
+module Language.Haskell.Modules.FGL
     ( -- * Pure operations
       labNodes, labEdges, mkGraph
       -- * With NodeMap state
@@ -30,12 +30,12 @@ module Refactor.FGL
 
 import Control.Lens hiding (elements, pre)
 import Control.Monad.State
-import Data.Default (Default(def))
 import Data.Foldable (foldrM)
 import qualified Data.Graph.Inductive as G
 import Data.Map as Map (Map, filter, fromList, insert)
 import Data.Set as Set (Set, fromList, null)
 import Data.Tuple (swap)
+import Language.Haskell.Modules.Orphans ()
 import Test.HUnit
 
 runGraphT :: Ord a => StateT (G.NodeMap a) m r -> m (r, G.NodeMap a)
@@ -62,9 +62,6 @@ foldrM' f t r = foldrM f r t
 mkGraphM :: forall m gr a b. (Monad m, G.DynGraph gr, Ord a) =>
             [a] -> [(a, a, b)] -> StateT (G.NodeMap a) m (gr a b)
 mkGraphM ns es = foldrM' insNode ns G.empty >>= foldrM' insEdge es
-
-instance Default (G.Gr a b) where
-  def = G.empty
 
 -- | Build a graph from nodes and edges
 mkGraph :: forall gr a b. (G.DynGraph gr, Ord a) =>
