@@ -8,10 +8,10 @@ import Data.Default (def)
 import Data.Function (on)
 import Data.Graph.Inductive (grev)
 import Data.List (sortBy)
-import Data.Map as Map (lookup)
+import Data.Map as Map (lookup, Map)
 import Data.Set as Set (difference, fromList, toList, unions)
 import Language.Haskell.Exts (Name(Ident))
-import Language.Haskell.Exts.Syntax (ModuleName(ModuleName))
+import Language.Haskell.Exts.Syntax (ImportDecl(..), Module, ModuleName(..))
 import qualified Language.Haskell.Exts.Syntax as Exts
 import Language.Haskell.Interpreter (runInterpreter, getModuleExports{-, InterpreterError-})
 import qualified Language.Haskell.Interpreter as Hint (ModuleElem(..))
@@ -23,6 +23,7 @@ import Language.Haskell.TH.Instances ()
 import Language.Haskell.TH.Syntax (ModName(..), PkgName(..))
 import Prelude hiding (lookup)
 import Refactor.FGL (components)
+import Refactor.Imports (buildEnvironment)
 import Refactor.Orphans ()
 import Refactor.Parse (parseAndAnnotateModules)
 import Refactor.Reify (findModuleSymbols)
@@ -30,6 +31,8 @@ import Refactor.Render (renderModule)
 import Refactor.Split (bisect, declares, DeclGroup(unDecs), withDecomposedModule)
 import System.IO (readFile, writeFile)
 import Test.HUnit hiding (path)
+
+import Environment (test6)
 
 main :: IO ()
 main = do
@@ -57,7 +60,7 @@ demo4 = do
 testSymbolString p s = p (ppSymbol s)
 
 tests :: Test
-tests = TestList [test1, test2, test3, test4, test5]
+tests = TestList [test1, test2, test3, test4, test5, test6]
 
 test1 :: Test
 test1 = TestCase (assertEqual "reifyModule Prelude"

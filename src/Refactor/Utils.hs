@@ -4,8 +4,11 @@ module Refactor.Utils where
 
 import Control.Monad (MonadPlus, msum)
 import Data.Generics (Data, listify, Typeable)
-import Data.Set as Set (Set)
+import Data.Map as Map (fromList, Map)
+import Data.Set as Set (fromList, Set)
 import qualified Data.Set as Set
+import Debug.Show (V(V))
+import Language.Haskell.TH.Syntax
 
 flatten :: Ord a => Set (Set a) -> Set a
 flatten = foldl Set.union mempty
@@ -34,3 +37,17 @@ lines' s                 =  cons (case break (== '\n') s of
                                                     _:s''   -> lines' s''))
   where
     cons ~(h, t)        =  h : t
+
+-- Works when it works.
+singleton :: Applicative m => a -> m a
+singleton = pure
+
+showName :: Name -> String
+showName (Name (OccName s) (NameG VarName (PkgName p) (ModName m))) = m ++ "." ++ s ++ " from package " ++ p
+showName n = show (V n)
+
+mapFromList :: Ord k => [(k, a)] -> Map k a
+mapFromList = Map.fromList
+
+setFromList :: Ord a => [a] -> Set a
+setFromList = Set.fromList

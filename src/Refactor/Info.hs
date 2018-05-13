@@ -17,8 +17,6 @@ import Language.Haskell.Exts.SrcLoc
 import Language.Haskell.Exts.Syntax
 import Language.Haskell.Names.GlobalSymbolTable as Global (Table)
 
-deriving instance Ord Comment
-
 data ModuleInfo l =
     ModuleInfo { _module :: Module l
                , _moduleComments :: [Comment]
