@@ -10,7 +10,6 @@ import Language.Haskell.Interpreter
 import Language.Haskell.Names (Symbol)
 import Language.Haskell.TH.Lift
 import Data.Monoid ((<>))
-import Instances.TH.Lift
 
 instance Pretty SrcLoc where
     pPrint l = text ("(l" <> show (srcLine l) ++ ",c" ++ show (srcColumn l) ++ ")")
@@ -21,5 +20,3 @@ instance Pretty SrcSpan where
 
 instance Pretty SrcSpanInfo where
     pPrint = pPrint . srcInfoSpan
-
-$(deriveLiftMany [''ModuleElem, ''Exts.ModuleName, ''Symbol, ''Name])

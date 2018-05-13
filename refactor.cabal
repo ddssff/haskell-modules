@@ -23,13 +23,17 @@ Library
     filepath,
     haskell-names,
     haskell-src-exts >= 1.18,
+    hint,
     hse-cpp,
     HUnit,
     lens,
     mtl,
     optparse-applicative,
     pretty,
-    syb
+    syb,
+    template-haskell,
+    th-lift,
+    th-orphans
   Exposed-Modules:
     Refactor.CPP
     Refactor.FGL

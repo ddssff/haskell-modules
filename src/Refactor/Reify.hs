@@ -1,8 +1,8 @@
+-- | Load the symbols of a module for which we do not have source.
+-- This module could be added to the @haskell-names@ package.
+
 {-# LANGUAGE ScopedTypeVariables, TemplateHaskell #-}
 {-# OPTIONS -Wall -fno-warn-orphans #-}
-
--- | Load the symbols of a module for which we do not
--- have source.
 
 module Refactor.Reify
     ( moduleSymbols
