@@ -28,6 +28,7 @@ import Language.Haskell.Exts.SrcLoc
 import Language.Haskell.Exts.Syntax
 import Language.Haskell.Modules.FGL
 import Language.Haskell.Modules.Info
+import Language.Haskell.Modules.Query
 import Language.Haskell.Modules.Utils
 import Language.Haskell.Names (Scoped(..), Symbol)
 import Language.Haskell.Names.GlobalSymbolTable as Global (lookupName)
@@ -57,7 +58,7 @@ bisect p g = do
 -- signature and the corresponding declaration(s).
 newtype DeclGroup l = DeclGroup {unDecs :: [Decl l]} deriving (Data, Eq, Ord, Show, Functor)
 
-declGroupName :: (Data l, Eq l) => ModuleInfo l -> DeclGroup l -> Symbol
+declGroupName :: (Data l, Ord l) => ModuleInfo l -> DeclGroup l -> Symbol
 declGroupName i (DeclGroup ds) =
     case Set.toList (foldr1 Set.intersection (fmap (declares i) ds)) of
       [s] -> s
@@ -256,22 +257,14 @@ filterComments _ _ _ = error "filterComments"
 -}
 
 -- | Symbols declared by a declaration.  (Should take a single element, not a set.)
-declares :: (Data l, Eq l) => ModuleInfo l -> Decl l -> Set Symbol
-declares i ds = getTopDeclSymbols' i ds
+declares :: (Data l, Ord l) => ModuleInfo l -> Decl l -> Set Symbol
+declares i d = declaredSymbols (_moduleGlobals i, getModuleName (_module i), d)
 
 exports :: forall l. (Data l, Ord l, Show l) => ModuleInfo (Scoped l) -> ExportSpec (Scoped l) -> Set Symbol
-exports i (EVar _l qname) = Set.fromList (lookupName qname (_moduleGlobals i))
-exports i (EThingWith _l _w qname _cname) = Set.fromList (lookupName qname (_moduleGlobals i))
-exports i (EAbs _l _ns qname) = Set.fromList (lookupName qname (_moduleGlobals i))
-exports _i (EModuleContents _ (ModuleName _l _string)) =
-    -- Re-exports all the symbols that were imported from a module
-    Set.empty
+exports i espec = exportedSymbols (_moduleGlobals i, _module i, espec)
 
 imports :: forall l. (Data l, Ord l, Show l) => ModuleInfo (Scoped l) -> ImportSpec (Scoped l) -> Set Symbol
-imports i (IVar _l name) = Set.fromList (lookupName (nameToQName name) (_moduleGlobals i))
-imports i (IAbs _l _space name) = Set.fromList (lookupName (nameToQName name) (_moduleGlobals i))
-imports i (IThingAll _l name) = Set.fromList (lookupName (nameToQName name) (_moduleGlobals i))
-imports i (IThingWith _l name _cnames) = Set.fromList (lookupName (nameToQName name) (_moduleGlobals i))
+imports i ispec = importedSymbols (_moduleGlobals i, ispec)
 
 -- | Symbols used in a declaration - a superset of declares.
 uses :: forall l d. (Data d, Data l, Ord l, Show l) => ModuleInfo (Scoped l) -> d -> Set Symbol

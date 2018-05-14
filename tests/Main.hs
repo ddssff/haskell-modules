@@ -8,10 +8,10 @@ import Data.Default (def)
 import Data.Function (on)
 import Data.Graph.Inductive (grev)
 import Data.List (sortBy)
-import Data.Map as Map (lookup, Map)
+import Data.Map as Map (lookup)
 import Data.Set as Set (difference, fromList, toList, unions)
 import Language.Haskell.Exts (Name(Ident))
-import Language.Haskell.Exts.Syntax (ImportDecl(..), Module, ModuleName(..))
+import Language.Haskell.Exts.Syntax (ModuleName(..))
 import qualified Language.Haskell.Exts.Syntax as Exts
 import Language.Haskell.Interpreter (runInterpreter, getModuleExports{-, InterpreterError-})
 import qualified Language.Haskell.Interpreter as Hint (ModuleElem(..))
@@ -22,17 +22,17 @@ import Language.Haskell.Exts.Syntax (Name(..))
 import Language.Haskell.TH.Instances ()
 import Language.Haskell.TH.Syntax (ModName(..), PkgName(..))
 import Prelude hiding (lookup)
-import Refactor.FGL (components)
-import Refactor.Imports (buildEnvironment)
-import Refactor.Orphans ()
-import Refactor.Parse (parseAndAnnotateModules)
-import Refactor.Reify (findModuleSymbols)
-import Refactor.Render (renderModule)
-import Refactor.Split (bisect, declares, DeclGroup(unDecs), withDecomposedModule)
+import Language.Haskell.Modules.Danger (dangerous)
+import Language.Haskell.Modules.FGL (components)
+import Language.Haskell.Modules.Orphans ()
+import Language.Haskell.Modules.Parse (parseAndAnnotateModules)
+import Language.Haskell.Modules.Reify (findModuleSymbols)
+import Language.Haskell.Modules.Render (renderModule)
+import Language.Haskell.Modules.Split (bisect, declares, DeclGroup(unDecs), withDecomposedModule)
 import System.IO (readFile, writeFile)
 import Test.HUnit hiding (path)
 
-import Environment (test6)
+import qualified Environment
 
 main :: IO ()
 main = do
@@ -40,27 +40,27 @@ main = do
   when (es > 0 || fs > 0) (error (showCounts cs))
 
 demo1 = do
-  [i] <- let path = "src/Refactor/FGL.hs" in readFile path >>= \text -> parseAndAnnotateModules def [(path, text)]
+  [i] <- let path = "src/Langauge/Haskell/Modules/FGL.hs" in readFile path >>= \text -> parseAndAnnotateModules def [(path, text)]
   mapM_ (\(s, n) -> writeFile ("Tmp" ++ show n ++ ".hs") s) (zip (withDecomposedModule components renderModule i) [1..])
 
 demo2 = do
-  [i] <- let path = "src/Refactor/FGL.hs" in readFile path >>= \text -> parseAndAnnotateModules def [(path, text)]
+  [i] <- let path = "src/Langauge/Haskell/Modules/FGL.hs" in readFile path >>= \text -> parseAndAnnotateModules def [(path, text)]
   mapM_ (\(s, n) -> writeFile ("Tmp" ++ show n ++ ".hs") s) (zip (withDecomposedModule (components . grev) renderModule i) [1..])
 
 -- | Pull out context and everything that uses it: context, labNode
 demo3 = do
-  [i] <- let path = "src/Refactor/FGL.hs" in readFile path >>= \text -> parseAndAnnotateModules def [(path, text)]
-  mapM_ (\(s, n) -> writeFile ("Tmp" ++ show n ++ ".hs") s) (zip (withDecomposedModule (bisect (\d -> any (testSymbolString (== "Refactor.FGL.context")) (Set.unions (fmap (declares i) (unDecs d))))) renderModule i) [1..])
+  [i] <- let path = "src/Langauge/Haskell/Modules/FGL.hs" in readFile path >>= \text -> parseAndAnnotateModules def [(path, text)]
+  mapM_ (\(s, n) -> writeFile ("Tmp" ++ show n ++ ".hs") s) (zip (withDecomposedModule (bisect (\d -> any (testSymbolString (== "Language.Haskell.Modules.FGL.context")) (Set.unions (fmap (declares i) (unDecs d))))) renderModule i) [1..])
 
 -- | Pull out context and everything it uses.
 demo4 = do
-  [i] <- let path = "src/Refactor/FGL.hs" in readFile path >>= \text -> parseAndAnnotateModules def [(path, text)]
-  mapM_ (\(s, n) -> writeFile ("Tmp" ++ show n ++ ".hs") s) (zip (withDecomposedModule (bisect (\d -> any (testSymbolString (== "Refactor.FGL.context")) (Set.unions (fmap (declares i) (unDecs d)))) . grev) renderModule i) [1..])
+  [i] <- let path = "src/Langauge/Haskell/Modules/FGL.hs" in readFile path >>= \text -> parseAndAnnotateModules def [(path, text)]
+  mapM_ (\(s, n) -> writeFile ("Tmp" ++ show n ++ ".hs") s) (zip (withDecomposedModule (bisect (\d -> any (testSymbolString (== "Language.Haskell.Modules.FGL.context")) (Set.unions (fmap (declares i) (unDecs d)))) . grev) renderModule i) [1..])
 
 testSymbolString p s = p (ppSymbol s)
 
 tests :: Test
-tests = TestList [test1, test2, test3, test4, test5, test6]
+tests = TestList [test1, test2, test3, test4, test5, Environment.test1, Environment.test2]
 
 test1 :: Test
 test1 = TestCase (assertEqual "reifyModule Prelude"
@@ -394,7 +394,7 @@ test4 = TestCase (assertEqual "loadBase GHC.Types"
 -- Applicative.
 test5 :: Test
 test5 = TestCase (do let syms1 = Set.fromList $ maybe (error "test5") id $ Map.lookup (Exts.ModuleName () "Prelude") $(runIO loadBase >>= lift)
-                         syms2 = Set.fromList $ $(findModuleSymbols "Prelude")
+                         syms2 = Set.fromList $ $(findModuleSymbols 0 dangerous "Prelude")
                      assertEqual "loadBase vs findModuleSymbols 1"
                        ([Constructor {symbolModule = ModuleName () "Data.Maybe", symbolName = Ident () "Just", typeName = Ident () "Maybe"},
                          Constructor {symbolModule = ModuleName () "Data.Maybe", symbolName = Ident () "Nothing", typeName = Ident () "Maybe"},

@@ -5,7 +5,6 @@ module Environment where
 
 import Control.Lens (over)
 import Data.Default (def)
-import Data.Function (on)
 import Data.Graph.Inductive (grev)
 import Data.List (sortBy)
 import Data.Map as Map (fromList, lookup, Map)
@@ -13,6 +12,14 @@ import Data.Set as Set (difference, toList, unions)
 import Language.Haskell.Exts (Name(Ident), SrcSpanInfo)
 import Language.Haskell.Exts.Syntax (ImportDecl(..), Module, ModuleName(..))
 import Language.Haskell.Interpreter (runInterpreter, getModuleExports{-, InterpreterError-})
+import Language.Haskell.Modules.CPP ({-ghcOptions,-} hsSourceDirs)
+import Language.Haskell.Modules.Danger (dangerous)
+import Language.Haskell.Modules.FGL (components)
+import Language.Haskell.Modules.Imports (buildEnvironment)
+import Language.Haskell.Modules.Info (ModuleInfo(..))
+import Language.Haskell.Modules.IO (loadModules)
+import Language.Haskell.Modules.Orphans ()
+import Language.Haskell.Modules.Reify (findModuleSymbols)
 import Language.Haskell.Names (Environment, loadBase, ppSymbol, Scoped(..), Symbol(..))
 import Language.Haskell.Names.SyntaxUtils (getModuleName)
 import Language.Haskell.TH.Syntax (lift, runIO)
@@ -20,13 +27,6 @@ import Language.Haskell.Exts.Syntax (Name(..))
 import Language.Haskell.TH.Instances ()
 import Language.Haskell.TH.Syntax (ModName(..), PkgName(..))
 import Prelude hiding (lookup)
-import Refactor.CPP ({-ghcOptions,-} hsSourceDirs)
-import Refactor.FGL (components)
-import Refactor.Imports (buildEnvironment)
-import Refactor.Info (ModuleInfo(..))
-import Refactor.IO (loadModules)
-import Refactor.Orphans ()
-import Refactor.Reify (findModuleSymbols, nameMatch, preludeSpecial)
 import System.FilePath ((</>))
 import System.IO (readFile, writeFile)
 import Test.HUnit hiding (path)
@@ -36,12 +36,13 @@ import Control.Monad (msum)
 -- modules we parse and annotate.
 import qualified Control.Lens
 import qualified Control.Monad -- (msum, when)
+import qualified Control.Monad.Catch
 import qualified Control.Monad.RWS
 import qualified Control.Monad.State
 import qualified Data.Char
+import qualified Data.Data
 import qualified Data.Default
 import qualified Data.Foldable
-import qualified Data.Function
 import qualified Data.Generics
 import qualified Data.Graph.Inductive
 import qualified Data.List
@@ -55,6 +56,7 @@ import qualified Debug.Show
 import qualified Distribution.Compat.ReadP
 import qualified Distribution.Package
 import qualified Distribution.Text
+import qualified GHC.IO.Exception
 import qualified Language.Haskell.Exts
 import qualified Language.Haskell.Exts.Comments
 import qualified Language.Haskell.Exts.CPP
@@ -78,24 +80,26 @@ import qualified System.IO
 import qualified Test.HUnit
 import qualified Text.PrettyPrint.HughesPJClass
 
-test6 :: Test
-test6 = TestCase (assertEqual "buildEnvironment 1"
-                    (Map.fromList [(ModuleName () "Prelude", $(findModuleSymbols 0 preludeSpecial "Prelude"))])
-                    env6)
+test1 :: Test
+test1 = TestCase (assertEqual "buildEnvironment 1"
+                    (Map.fromList [(ModuleName () "Prelude", $(findModuleSymbols 0 dangerous "Prelude"))])
+                    env1)
 
-env6 :: Environment
-env6 = $(buildEnvironment 0 preludeSpecial [ModuleName () "Prelude"] ([] :: [Module ()]))
+env1 :: Environment
+env1 = $(buildEnvironment 0 dangerous [ModuleName () "Prelude"] ([] :: [Module ()]))
 
-test7 :: Test
-test7 = TestCase (assertEqual "buildEnvironment 1"
+test2 :: Test
+test2 = TestCase (assertEqual "buildEnvironment 2"
+                    -- Remove fmap length to see the whole ugly story
                     (Map.fromList [(ModuleName () "Control.Lens",838),
                                    (ModuleName () "Control.Monad",42),
+                                   (ModuleName () "Control.Monad.Catch",34),
                                    (ModuleName () "Control.Monad.RWS",115),
                                    (ModuleName () "Control.Monad.State",69),
                                    (ModuleName () "Data.Char",63),
+                                   (ModuleName () "Data.Data",106),
                                    (ModuleName () "Data.Default",2),
                                    (ModuleName () "Data.Foldable",37),
-                                   (ModuleName () "Data.Function",8),
                                    (ModuleName () "Data.Generics",188),
                                    (ModuleName () "Data.Graph.Inductive",293),
                                    (ModuleName () "Data.List",116),
@@ -109,6 +113,7 @@ test7 = TestCase (assertEqual "buildEnvironment 1"
                                    (ModuleName () "Distribution.Compat.ReadP",34),
                                    (ModuleName () "Distribution.Package",32),
                                    (ModuleName () "Distribution.Text",6),
+                                   (ModuleName () "GHC.IO.Exception",65),
                                    (ModuleName () "Language.Haskell.Exts",978),
                                    (ModuleName () "Language.Haskell.Exts.CPP",24),
                                    (ModuleName () "Language.Haskell.Exts.Comments",5),
@@ -132,45 +137,17 @@ test7 = TestCase (assertEqual "buildEnvironment 1"
                                    (ModuleName () "System.IO",106),
                                    (ModuleName () "Test.HUnit",52),
                                    (ModuleName () "Text.PrettyPrint.HughesPJClass",77)])
-                    -- Remove fmap length to see the whole ugly story
-                    (fmap length env7))
+                    (fmap length env2))
 
 -- | Build an 'Environment' containing all the symbols imported
 -- by a list of modules, in this case the modules of this library.
-env7 :: Environment
-env7 = $(do mods7 <- runIO (loadModules
-                              (over hsSourceDirs (++ ["/home/dsf/git/refactor/src", "/home/dsf/git/refactor/tests"]) def)
-                              (fmap ("src/Refactor" </>)
+env2 :: Environment
+env2 = $(do mods7 <- runIO (loadModules
+                              (over hsSourceDirs (++ ["/home/dsf/git/haskell-modules/src", "/home/dsf/git/haskell-modules/tests"]) def)
+                              (fmap ("src/Language/Haskell/Modules" </>)
                                  ["Utils.hs", "SrcLoc.hs", "Reify.hs", "Orphans.hs", "Info.hs", "FGL.hs", "Split.hs",
-                                  "CPP.hs", "Parse.hs", "Render.hs", "IO.hs", "Imports.hs"]))
+                                  "CPP.hs", "Parse.hs", "Query.hs", "Render.hs", "IO.hs", "Danger.hs", "Imports.hs"]))
             -- These symbols are bound to declarations that use
             -- implicit parameters, and are therefore impossible to
             -- reify (as of ghc-8.0 thru 8.4.)
-            let special name = msum [ preludeSpecial name
-                                    , nameMatch ("Control.Lens.Fold", "^?!") name
-                                    , nameMatch ("Control.Lens.Fold", "^@?!") name
-                                    , nameMatch ("Control.Lens.Fold", "foldl1Of") name
-                                    , nameMatch ("Control.Lens.Fold", "foldl1Of'") name
-                                    , nameMatch ("Control.Lens.Fold", "foldr1Of") name
-                                    , nameMatch ("Control.Lens.Fold", "foldr1Of'") name
-                                    , nameMatch ("Control.Lens.Traversal", "singular") name
-                                    , nameMatch ("Control.Lens.Traversal", "unsafeSingular") name
-                                    , nameMatch ("GHC.IO.Exception", "assertError") name
-                                    , nameMatch ("Test.HUnit.Base", "Assertable") name
-                                    , nameMatch ("Test.HUnit.Base", "assert") name
-                                    , nameMatch ("Test.HUnit.Base", "assertBool") name
-                                    , nameMatch ("Test.HUnit.Base", "assertString") name
-                                    , nameMatch ("Test.HUnit.Lang", "assertEqual") name
-                                    , nameMatch ("Test.HUnit.Lang", "assertFailure") name
-                                    , nameMatch ("Test.HUnit.Base", "ListAssertable") name
-                                    , nameMatch ("Test.HUnit.Base", "listAssert") name
-                                    , nameMatch ("Test.HUnit.Base", "Testable") name
-                                    , nameMatch ("Test.HUnit.Base", "test") name
-                                    , nameMatch ("Test.HUnit.Base", "@=?") name
-                                    , nameMatch ("Test.HUnit.Base", "@?=") name
-                                    , nameMatch ("Test.HUnit.Base", "@?") name
-                                    , nameMatch ("Test.HUnit.Base", "~=?") name
-                                    , nameMatch ("Test.HUnit.Base", "~?") name
-                                    , nameMatch ("Test.HUnit.Base", "~?=") name
-                                    , nameMatch ("Test.HUnit.Base", "~:") name]
-            buildEnvironment 0 special [ModuleName () "Prelude"] (fmap _module mods7))
+            buildEnvironment 0 dangerous [ModuleName () "Prelude"] (fmap _module mods7))

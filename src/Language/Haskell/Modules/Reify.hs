@@ -5,52 +5,24 @@
 {-# OPTIONS -Wall -fno-warn-orphans #-}
 
 module Language.Haskell.Modules.Reify
-    ( NamePattern(nameMatch)
-    , findModuleSymbols
-    , preludeSpecial
+    ( findModuleSymbols
     ) where
 
-import Control.Monad (msum, when)
+import Control.Monad (msum)
 import Control.Monad.State (modify, runStateT, StateT)
-import Data.List (isPrefixOf)
 import Data.Set as Set (insert, member, Set)
 import qualified Language.Haskell.Exts.Syntax as Exts
 import Language.Haskell.Interpreter as Hint (runInterpreter, getModuleExports, ModuleElem(..))
-import Language.Haskell.Modules.Utils (showName, singleton)
+-- import Language.Haskell.Modules.Danger (NamePattern(nameMatch), dangerous)
+import Language.Haskell.Modules.Danger (reify')
+import Language.Haskell.Modules.Utils (singleton)
 import Language.Haskell.Names as Names (Symbol(..))
-import Language.Haskell.TH (ExpQ, runQ, Type(TupleT))
+import Language.Haskell.TH (ExpQ, runQ)
 import Language.Haskell.TH.Instances ()
 import Language.Haskell.TH.Lift (deriveLiftMany, lift)
 import Language.Haskell.TH.Syntax as TH
     (Dec(..), Info(..), lookupValueName, lookupTypeName, ModName(..),
-     Name(..), NameFlavour(..), NameSpace(..), OccName(..), PkgName(..), Q, reify, runIO, TypeFamilyHead(..))
-import System.IO (hPutStrLn, stderr)
-
--- | Class of ways we can select a (dangerous to reify) 'Name' and
--- return the corresponding 'Info'.
-class NamePattern a where
-    nameMatch :: a -> Name -> Maybe Info
-
-instance NamePattern Name where
-    nameMatch name1 name2 | name1 == name2 = Just (VarI name2 (TupleT 0) Nothing)
-    nameMatch _ _ = Nothing
-
-instance NamePattern (String, String) where
-    nameMatch (mname1, sname1) name@(Name (OccName sname2) (NameG _ _ (ModName mname2)))
-        | mname1 == mname2 && sname1 == sname2 = Just (VarI name (TupleT 0) Nothing)
-    nameMatch _ _ = Nothing
-
-instance NamePattern (String, String, String) where
-    nameMatch (pname1, mname1, sname1) name@(Name (OccName sname2) (NameG _ (PkgName pname2) (ModName mname2)))
-        | mname1 == mname2 && sname1 == sname2 && isPrefixOf (pname1 ++ "-") pname2 =
-            Just (VarI name (TupleT 0) Nothing)
-    nameMatch _ _ = Nothing
-
--- avoid this one
-instance NamePattern String where
-    nameMatch sname1 name@(Name (OccName sname2) (NameG _ _ _))
-        | sname1 == sname2 = Just (VarI name (TupleT 0) Nothing)
-    nameMatch _ _ = Nothing
+     Name(..), NameFlavour(..), NameSpace(..), OccName(..), PkgName(..), Q, runIO, TypeFamilyHead(..))
 
 $(deriveLiftMany [''Hint.ModuleElem, ''Exts.ModuleName, ''Names.Symbol, ''Exts.Name])
 
@@ -92,24 +64,6 @@ nameInfo verbosity special defmod name =
   either (\s -> error $ "nameInfo - could not reify " ++ s ++ " in " ++ defmod ++ " - is it imported?")
          (runQ . reify' verbosity special)
          name
-
--- | Reify if special case function fails.
-reify' :: Int -> (Name -> Maybe Info) -> Name -> Q Info
-reify' verbosity special name =
-    maybe (when (verbosity > 0) (runIO (hPutStrLn stderr ("reify " ++ showName name ++ " special=" ++ show (special name)))) >> reify name) return ({-t2 name-} (special name))
-
--- t2 name r = trace ("special " ++ show name ++ " -> " ++ show r) r
-
-#if 0
--- | Unfortunately this always gives the dreaded "Can't do `reify' in the IO monad"
-reify'' :: (Name -> Maybe Info) -> Name -> Q Info
-reify'' special name =
-  runIO (catchIf
-           (\e -> ioe_type e == UserError &&
-                  ioe_description e == "Template Haskell failure")
-           (runQ $ reify' special name)
-           (\e  -> throwM (e {ioe_description = "Failure reifying " ++ showName name ++ ": " ++ ioe_description e})))
-#endif
 
 lookupNameWith  :: String -> (String -> Q (Maybe TH.Name)) -> String -> StateT (Set String) Q (Either String TH.Name)
 lookupNameWith defmod look i = do
@@ -206,10 +160,3 @@ thNameToModName _ (TH.Name _ (TH.NameG TcClsName (PkgName _) (ModName modname)))
 symbolOrIdent :: Set String -> String -> Exts.Name ()
 symbolOrIdent syms s | Set.member s syms = Exts.Symbol () s
 symbolOrIdent _ s = Exts.Ident () s
-
--- | Special case for functions in the prelude that template haskell
--- can't handle.
-preludeSpecial :: Name -> Maybe Info
-preludeSpecial name@(Name (OccName "error")     (NameG VarName (PkgName "base") (ModName "GHC.Err"))) = Just (VarI name (TupleT 0) Nothing)
-preludeSpecial name@(Name (OccName "undefined") (NameG VarName (PkgName "base") (ModName "GHC.Err"))) = Just (VarI name (TupleT 0) Nothing)
-preludeSpecial _ = Nothing
