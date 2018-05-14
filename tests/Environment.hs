@@ -8,7 +8,7 @@ import Data.Default (def)
 import Data.Graph.Inductive (grev)
 import Data.List (sortBy)
 import Data.Map as Map (fromList, lookup, Map)
-import Data.Set as Set (difference, toList, unions)
+import Data.Set as Set (difference, empty, insert, Set, singleton, toList, unions)
 import Language.Haskell.Exts (Name(Ident), SrcSpanInfo)
 import Language.Haskell.Exts.Syntax (ImportDecl(..), Module, ModuleName(..))
 import Language.Haskell.Interpreter (runInterpreter, getModuleExports{-, InterpreterError-})
@@ -19,9 +19,11 @@ import Language.Haskell.Modules.Imports (buildEnvironment)
 import Language.Haskell.Modules.Info (ModuleInfo(..))
 import Language.Haskell.Modules.IO (loadModules)
 import Language.Haskell.Modules.Orphans ()
+import Language.Haskell.Modules.Query (importedModules)
 import Language.Haskell.Modules.Reify (findModuleSymbols)
+import Language.Haskell.Modules.Utils (setFromList)
 import Language.Haskell.Names (Environment, loadBase, ppSymbol, Scoped(..), Symbol(..))
-import Language.Haskell.Names.SyntaxUtils (getModuleName)
+import Language.Haskell.Names.SyntaxUtils (dropAnn, getModuleName)
 import Language.Haskell.TH.Syntax (lift, runIO)
 import Language.Haskell.Exts.Syntax (Name(..))
 import Language.Haskell.TH.Instances ()
@@ -80,13 +82,16 @@ import qualified System.IO
 import qualified Test.HUnit
 import qualified Text.PrettyPrint.HughesPJClass
 
+tests :: Test
+tests = TestList [test1, test2]
+
 test1 :: Test
 test1 = TestCase (assertEqual "buildEnvironment 1"
                     (Map.fromList [(ModuleName () "Prelude", $(findModuleSymbols 0 dangerous "Prelude"))])
                     env1)
 
 env1 :: Environment
-env1 = $(buildEnvironment 0 dangerous [ModuleName () "Prelude"] ([] :: [Module ()]))
+env1 = $(buildEnvironment 0 dangerous (Set.singleton (ModuleName () "Prelude")))
 
 test2 :: Test
 test2 = TestCase (assertEqual "buildEnvironment 2"
@@ -114,6 +119,7 @@ test2 = TestCase (assertEqual "buildEnvironment 2"
                                    (ModuleName () "Distribution.Package",32),
                                    (ModuleName () "Distribution.Text",6),
                                    (ModuleName () "GHC.IO.Exception",65),
+                                   (ModuleName () "Instances.TH.Lift",0),
                                    (ModuleName () "Language.Haskell.Exts",978),
                                    (ModuleName () "Language.Haskell.Exts.CPP",24),
                                    (ModuleName () "Language.Haskell.Exts.Comments",5),
@@ -142,12 +148,15 @@ test2 = TestCase (assertEqual "buildEnvironment 2"
 -- | Build an 'Environment' containing all the symbols imported
 -- by a list of modules, in this case the modules of this library.
 env2 :: Environment
-env2 = $(do mods7 <- runIO (loadModules
-                              (over hsSourceDirs (++ ["/home/dsf/git/haskell-modules/src", "/home/dsf/git/haskell-modules/tests"]) def)
-                              (fmap ("src/Language/Haskell/Modules" </>)
-                                 ["Utils.hs", "SrcLoc.hs", "Reify.hs", "Orphans.hs", "Info.hs", "FGL.hs", "Split.hs",
-                                  "CPP.hs", "Parse.hs", "Query.hs", "Render.hs", "IO.hs", "Danger.hs", "Imports.hs"]))
-            -- These symbols are bound to declarations that use
-            -- implicit parameters, and are therefore impossible to
-            -- reify (as of ghc-8.0 thru 8.4.)
-            buildEnvironment 0 dangerous [ModuleName () "Prelude"] (fmap _module mods7))
+env2 =
+    $(do mods <- runIO (loadModules
+                          (over hsSourceDirs (++ ["/home/dsf/git/haskell-modules/src", "/home/dsf/git/haskell-modules/tests"]) def)
+                            (fmap ("src/Language/Haskell/Modules" </>)
+                               ["Utils.hs", "SrcLoc.hs", "Reify.hs", "Orphans.hs", "Info.hs", "FGL.hs", "Split.hs",
+                                "CPP.hs", "Parse.hs", "Query.hs", "Render.hs", "IO.hs", "Danger.hs", "Imports.hs"]))
+         -- These symbols are bound to declarations that use
+         -- implicit parameters, and are therefore impossible to
+         -- reify (as of ghc-8.0 thru 8.4.)
+         buildEnvironment 0 dangerous (Set.difference
+                                         (Set.insert (ModuleName () "Prelude") (Set.unions (fmap (importedModules . _module) mods)))
+                                         (setFromList (fmap (dropAnn . getModuleName . _module) mods))))

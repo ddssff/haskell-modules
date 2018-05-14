@@ -1,9 +1,12 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 {-# OPTIONS -Wall #-}
 
 module Language.Haskell.Modules.Info
@@ -12,10 +15,13 @@ module Language.Haskell.Modules.Info
     ) where
 
 import Data.Generics
+import Instances.TH.Lift ()
 import Language.Haskell.Exts.Comments (Comment(..))
 import Language.Haskell.Exts.SrcLoc
 import Language.Haskell.Exts.Syntax
+import Language.Haskell.Modules.Orphans ()
 import Language.Haskell.Names.GlobalSymbolTable as Global (Table)
+import Language.Haskell.TH.Lift (deriveLift)
 
 data ModuleInfo l =
     ModuleInfo { _module :: Module l
@@ -27,3 +33,5 @@ data ModuleInfo l =
                } deriving (Data, Typeable, Functor, Show)
 
 type ImportSpecWithDecl l = (ImportDecl l, ImportSpec l)
+
+$(deriveLift ''ModuleInfo)

@@ -28,15 +28,17 @@ module Language.Haskell.Modules.FGL
     , tests
     ) where
 
-import Control.Lens hiding (elements, pre)
-import Control.Monad.State
+import Control.Lens (_1, Identity, over)
+import Control.Monad.State (evalState, evalStateT, runState, runStateT, get, MonadState, put, StateT)
 import Data.Foldable (foldrM)
 import qualified Data.Graph.Inductive as G
+  (components, context, delLEdge, DynGraph, empty, fromGraph, gelem, Gr, insEdge, insNode,
+   labEdges, labNode', labNodes, LNode, lsuc', mkNode, new, Node, NodeMap, nodes, out, reachable)
 import Data.Map as Map (Map, filter, fromList, insert)
 import Data.Set as Set (Set, fromList, null)
 import Data.Tuple (swap)
 import Language.Haskell.Modules.Orphans ()
-import Test.HUnit
+import Test.HUnit (assertEqual, Test(TestCase, TestList))
 
 runGraphT :: Ord a => StateT (G.NodeMap a) m r -> m (r, G.NodeMap a)
 runGraphT f = runStateT f G.new

@@ -35,6 +35,7 @@ Library
     syb,
     template-haskell,
     th-lift,
+    th-lift-instances,
     th-orphans
   Exposed-Modules:
     Language.Haskell.Modules.CPP

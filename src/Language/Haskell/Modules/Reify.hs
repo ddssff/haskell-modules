@@ -2,7 +2,7 @@
 -- This module could be added to the @haskell-names@ package.
 
 {-# LANGUAGE CPP, FlexibleInstances, ScopedTypeVariables, TemplateHaskell #-}
-{-# OPTIONS -Wall -fno-warn-orphans #-}
+{-# OPTIONS -Wall #-}
 
 module Language.Haskell.Modules.Reify
     ( findModuleSymbols
@@ -15,6 +15,7 @@ import qualified Language.Haskell.Exts.Syntax as Exts
 import Language.Haskell.Interpreter as Hint (runInterpreter, getModuleExports, ModuleElem(..))
 -- import Language.Haskell.Modules.Danger (NamePattern(nameMatch), dangerous)
 import Language.Haskell.Modules.Danger (reify')
+import Language.Haskell.Modules.Orphans ()
 import Language.Haskell.Modules.Utils (singleton)
 import Language.Haskell.Names as Names (Symbol(..))
 import Language.Haskell.TH (ExpQ, runQ)
@@ -23,8 +24,6 @@ import Language.Haskell.TH.Lift (deriveLiftMany, lift)
 import Language.Haskell.TH.Syntax as TH
     (Dec(..), Info(..), lookupValueName, lookupTypeName, ModName(..),
      Name(..), NameFlavour(..), NameSpace(..), OccName(..), PkgName(..), Q, runIO, TypeFamilyHead(..))
-
-$(deriveLiftMany [''Hint.ModuleElem, ''Exts.ModuleName, ''Names.Symbol, ''Exts.Name])
 
 -- | Given a module name, get its top level 'Symbol' list.  This is done
 -- using the geModuleExports function from the @hint@ package, then
