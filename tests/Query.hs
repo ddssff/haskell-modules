@@ -13,7 +13,7 @@ import Language.Haskell.Names (ppSymbol, Symbol(..))
 import Language.Haskell.TH.Instances ()
 import Prelude hiding (lookup)
 import Language.Haskell.Modules.FGL (components)
-import Language.Haskell.Modules.Info (moduleGlobals, ModuleInfo(..))
+import Language.Haskell.Modules.Info (ModuleInfo(..))
 import Language.Haskell.Modules.Orphans ()
 import Language.Haskell.Modules.Parse (parseAndAnnotateModules)
 import Language.Haskell.Modules.Query (declaredSymbols, exportedSymbols, importedSymbols, referencedSymbols)
@@ -168,7 +168,7 @@ test5 =
                              Constructor {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "RenderInfo", typeName = Ident () "RenderInfo"},
                              Data {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "RenderInfo"}])
                   (Set.filter (\ x -> symbolModule x == ModuleName () "Language.Haskell.Modules.Render")
-                    (referencedSymbols (env', moduleGlobals env' (_module i), _module i)))
+                    (referencedSymbols (env', _module i)))
 
 test6 :: Test
 test6 =

@@ -32,7 +32,7 @@ import Language.Haskell.TH.Lift (deriveLift)
 data ModuleInfo l =
     ModuleInfo { _module :: Module l
                , _moduleComments :: [Comment]
-               -- , _modulePath :: FilePath
+               , _modulePath :: Maybe FilePath
                , _moduleText :: String
                , _moduleSpan :: SrcSpanInfo
                } deriving (Data, Typeable, Functor, Show)

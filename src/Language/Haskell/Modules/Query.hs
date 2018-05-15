@@ -20,33 +20,35 @@ import Language.Haskell.Exts.Syntax
 import Language.Haskell.Modules.Info
 import Language.Haskell.Modules.Utils (gFind)
 import Language.Haskell.Names (Scoped(..), Symbol(..), Environment)
-import Language.Haskell.Names.GlobalSymbolTable as Global (lookupName, Table)
+import Language.Haskell.Names.GlobalSymbolTable as Global (lookupName)
 import Language.Haskell.Names.ModuleSymbols (getTopDeclSymbols)
 import Language.Haskell.Names.SyntaxUtils
 
+-- | This duplicates the functionality of
+-- Language.Haskell.Names.ModuleSymbols (moduleSymbols)
 class DeclaredSymbols a where
     declaredSymbols :: a -> Set Symbol
 
 instance (Ord l, Data l) => DeclaredSymbols (Environment, ModuleInfo l) where
-    declaredSymbols (env, i) = declaredSymbols (env, moduleGlobals env (_module i), _module i)
+    declaredSymbols (env, i) = declaredSymbols (env, _module i)
 
-instance (Ord l, Data l) => DeclaredSymbols (Environment, Global.Table, Module l) where
-    declaredSymbols (env, table, m) = Set.unions (fmap (\d -> declaredSymbols (env, table, getModuleName m, d)) (getModuleDecls m))
+instance (Ord l, Data l) => DeclaredSymbols (Environment, Module l) where
+    declaredSymbols (env, m) = Set.unions (fmap (\d -> declaredSymbols (env, m, d)) (getModuleDecls m))
 
-instance (Ord l, Data l) => DeclaredSymbols (Environment, Global.Table, ModuleName l, Decl l) where
-    declaredSymbols (_env, table, mname, d) = Set.fromList (getTopDeclSymbols table mname d)
+instance (Ord l, Data l) => DeclaredSymbols (Environment, Module l, Decl l) where
+    declaredSymbols (env, m, d) = Set.fromList (getTopDeclSymbols (moduleGlobals env m) (getModuleName m) d)
 
 class ExportedSymbols a where
     exportedSymbols :: a -> Set Symbol
 
 instance (Ord l, Data l) => ExportedSymbols (Environment, ModuleInfo l) where
-    exportedSymbols (env, i) = exportedSymbols (env, moduleGlobals env (_module i), _module i)
+    exportedSymbols (env, i) = exportedSymbols (env, _module i)
 
-instance (Ord l, Data l) => ExportedSymbols (Environment, Global.Table, Module l) where
-    exportedSymbols (env, table, m) =
+instance (Ord l, Data l) => ExportedSymbols (Environment, Module l) where
+    exportedSymbols (env, m) =
         case getExportSpecList m of
-          Nothing -> declaredSymbols (env, table, m)
-          Just (ExportSpecList _ es) -> Set.unions (fmap (\e -> exportedSymbols (env, table, m, e)) es)
+          Nothing -> declaredSymbols (env, m)
+          Just (ExportSpecList _ es) -> Set.unions (fmap (\e -> exportedSymbols (env, m, e)) es)
 
 -- type Table = Map (QName ()) [Symbol]
 -- type Environment = Map (ModuleName ()) [Symbol]
@@ -58,13 +60,13 @@ instance (Ord l, Data l) => ExportedSymbols (Environment, ModuleName l) where
         -- that the module is not present in the environment.
         maybe Set.empty Set.fromList (Map.lookup (dropAnn name) env)
 
-instance (Ord l, Data l) => ExportedSymbols (Environment, Global.Table, Module l, ExportSpec l) where
-    exportedSymbols (_env, table, _m, EVar _l qname) = Set.fromList (lookupName qname table)
-    exportedSymbols (_env, table, _m, EThingWith _l _w qname _cname) = Set.fromList (lookupName qname table)
-    exportedSymbols (_env, table, _m, EAbs _l _ns qname) = Set.fromList (lookupName qname table)
-    exportedSymbols (env, table, m, EModuleContents _ name) =
+instance (Ord l, Data l) => ExportedSymbols (Environment, Module l, ExportSpec l) where
+    exportedSymbols (env, m, EVar _l qname) = Set.fromList (lookupName qname (moduleGlobals env m))
+    exportedSymbols (env, m, EThingWith _l _w qname _cname) = Set.fromList (lookupName qname (moduleGlobals env m))
+    exportedSymbols (env, m, EAbs _l _ns qname) = Set.fromList (lookupName qname (moduleGlobals env m))
+    exportedSymbols (env, m, EModuleContents _ name) =
         -- Find all symbols imported from name
-        importedFrom (importedSymbols (env, table, m))
+        importedFrom (importedSymbols (env, m))
         where importedFrom :: Set Symbol -> Set Symbol
               importedFrom imports =
                   Set.filter (\sym -> symbolModule sym == dropAnn name) imports
@@ -81,31 +83,36 @@ instance ImportedModules (Module l) where
 instance ImportedModules (ImportDecl l) where
     importedModules = Set.singleton . dropAnn . importModule
 
--- | Symbols that are either imported or declared
+-- | Symbols that are either imported or declared.  Note that
+-- this duplicates the Language.Haskell.Names.Imports.importTable.
 class ImportedSymbols a where
     importedSymbols :: a -> Set Symbol
 
 instance (Ord l, Data l) => ImportedSymbols (Environment, ModuleInfo l) where
-    importedSymbols (env, i) = importedSymbols (env, moduleGlobals env (_module i), _module i)
+    importedSymbols (env, i) = importedSymbols (env, _module i)
 
-instance (Ord l, Data l) => ImportedSymbols (Environment, Global.Table, Module l) where
-    importedSymbols (env, table, m) = Set.unions (fmap (\i -> importedSymbols (env, table, i)) (getImports m))
+instance (Ord l, Data l) => ImportedSymbols (Environment, Module l) where
+    importedSymbols (env, m) = Set.unions (fmap (\i -> importedSymbols (env, m, i)) (getImports m))
 
-instance (Ord l, Data l) => ImportedSymbols (Environment, Global.Table, ImportDecl l) where
-    importedSymbols (env, table, ImportDecl {importModule = mname, importAs = aname, importSpecs = Just (ImportSpecList _ False isl)}) =
-        Set.unions (fmap (\ispec -> importedSymbols (env, table, mname, aname, ispec)) isl)
-    importedSymbols (env, table, ImportDecl {importModule = mname, importAs = aname, importSpecs = Just (ImportSpecList _ True isl)}) =
+instance (Ord l, Data l) => ImportedSymbols (Environment, Module l, ImportDecl l) where
+    importedSymbols (env, m, ImportDecl {importModule = mname, importAs = aname, importSpecs = Just (ImportSpecList _ False isl)}) =
+        Set.unions (fmap (\ispec -> importedSymbols (env, m, mname, aname, ispec)) isl)
+    importedSymbols (env, m, ImportDecl {importModule = mname, importAs = aname, importSpecs = Just (ImportSpecList _ True isl)}) =
         -- All the symbols the module exports other than the ones in the list
-        Set.difference (exportedSymbols (env, mname)) (Set.unions (fmap (\i -> importedSymbols (env, table, mname, aname, i)) isl))
-    importedSymbols (env, _table, ImportDecl {importModule = mname, importSpecs = Nothing}) =
+        Set.difference (exportedSymbols (env, mname)) (Set.unions (fmap (\i -> importedSymbols (env, m, mname, aname, i)) isl))
+    importedSymbols (env, _m, ImportDecl {importModule = mname, importSpecs = Nothing}) =
         -- All the symbols in a module
         exportedSymbols (env, mname)
 
-instance ImportedSymbols (Environment, Global.Table, ModuleName l, Maybe (ModuleName l), ImportSpec l) where
-    importedSymbols (_env, table, mname, aname, IVar _l name) = Set.fromList (lookupName (toQName (fromMaybe mname aname) name) table)
-    importedSymbols (_env, table, mname, aname, IAbs _l _space name) = Set.fromList (lookupName (toQName (fromMaybe mname aname) name) table)
-    importedSymbols (_env, table, mname, aname, IThingAll _l name) = Set.fromList (lookupName (toQName (fromMaybe mname aname) name) table)
-    importedSymbols (_env, table, mname, aname, IThingWith _l name _cnames) = Set.fromList (lookupName (toQName (fromMaybe mname aname) name) table)
+instance ImportedSymbols (Environment, Module l, ModuleName l, Maybe (ModuleName l), ImportSpec l) where
+    importedSymbols (env, m, mname, aname, IVar _l name) =
+        Set.fromList (lookupName (toQName (fromMaybe mname aname) name) (moduleGlobals env m))
+    importedSymbols (env, m, mname, aname, IAbs _l _space name) =
+        Set.fromList (lookupName (toQName (fromMaybe mname aname) name) (moduleGlobals env m))
+    importedSymbols (env, m, mname, aname, IThingAll _l name) =
+        Set.fromList (lookupName (toQName (fromMaybe mname aname) name) (moduleGlobals env m))
+    importedSymbols (env, m, mname, aname, IThingWith _l name _cnames) =
+        Set.fromList (lookupName (toQName (fromMaybe mname aname) name) (moduleGlobals env m))
 
 toQName :: ModuleName l -> Name l -> QName ()
 toQName mname name = Qual () (dropAnn mname) (dropAnn name)
@@ -116,27 +123,27 @@ class ReferencedSymbols a where
   referencedSymbols :: a -> Set Symbol
 
 instance ReferencedSymbols (Environment, ModuleInfo (Scoped SrcSpanInfo)) where
-    referencedSymbols (env, i) = referencedSymbols (env, moduleGlobals env (_module i), _module i)
+    referencedSymbols (env, i) = referencedSymbols (env, _module i)
 
-instance ReferencedSymbols (Environment, Global.Table, Module (Scoped SrcSpanInfo)) where
-    referencedSymbols (env, table, m) =
-        Set.unions (maybe Set.empty (\e -> referencedSymbols (env, table, e)) (getExportSpecList m) :
-                    fmap (\d -> referencedSymbols (env, table, getModuleName m, d)) (getModuleDecls m))
+instance ReferencedSymbols (Environment, Module (Scoped SrcSpanInfo)) where
+    referencedSymbols (env, m) =
+        Set.unions (maybe Set.empty (\e -> referencedSymbols (env, m, e)) (getExportSpecList m) :
+                    fmap (\d -> referencedSymbols (env, m, d)) (getModuleDecls m))
 
-instance ReferencedSymbols (Environment, Global.Table, ExportSpecList (Scoped SrcSpanInfo)) where
-    referencedSymbols (env, table, x) =
-        Set.fromList (concatMap (`lookupName` table) names)
+instance ReferencedSymbols (Environment, Module (Scoped SrcSpanInfo), ExportSpecList (Scoped SrcSpanInfo)) where
+    referencedSymbols (env, m, x) =
+        Set.fromList (concatMap (`lookupName` moduleGlobals env m) names)
         where names = fmap nameToQName (gFind x :: [Name (Scoped SrcSpanInfo)]) ++ gFind x :: [QName (Scoped SrcSpanInfo)]
 
-instance ReferencedSymbols (Environment, Global.Table, ModuleName (Scoped SrcSpanInfo), Decl (Scoped SrcSpanInfo)) where
+instance ReferencedSymbols (Environment, Module (Scoped SrcSpanInfo), Decl (Scoped SrcSpanInfo)) where
     -- A type signature does not count as a reference, if a symbol
     -- is declared in a module and has an accompanying signature
     -- it still may be "Defined but not used".
-    referencedSymbols (env, table, mname, x@(TypeSig {})) = Set.empty
-    referencedSymbols (env, table, mname, x) =
+    referencedSymbols (_env, _m, (TypeSig {})) = Set.empty
+    referencedSymbols (env, m, x) =
         (Set.difference
-          ({-t1 x-} (Set.fromList (concatMap (`lookupName` table) names)))
-          ({-t2 x-} (declaredSymbols (env, table, mname, x))))
+          ({-t1 x-} (Set.fromList (concatMap (`lookupName` moduleGlobals env m) names)))
+          ({-t2 x-} (declaredSymbols (env, m, x))))
         where names = fmap nameToQName (gFind x :: [Name (Scoped SrcSpanInfo)]) ++ gFind x :: [QName (Scoped SrcSpanInfo)]
 
 -- t1 d r = trace ("referenced by " ++ show d ++ ": " ++ show r) r

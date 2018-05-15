@@ -20,8 +20,8 @@ import Language.Haskell.Modules.CPP (cppOptions, defaultParseMode, GHCOpts, turn
 import Language.Haskell.Modules.Info (ModuleInfo(..))
 import Language.Haskell.Modules.SrcLoc (fixEnds, fixSpan, mapTopAnnotations, spanOfText)
 import Language.Haskell.Names (annotate, Environment, resolve, Scoped(..))
-import Language.Haskell.Names.Imports (importTable)
-import Language.Haskell.Names.ModuleSymbols (moduleTable)
+--import Language.Haskell.Names.Imports (importTable)
+--import Language.Haskell.Names.ModuleSymbols (moduleTable)
 
 -- | Load a single module:
 --
@@ -40,6 +40,7 @@ parseModule opts path text = do
   let parsed = mapTopAnnotations (fixEnds comments text) $ everywhere (mkT fixSpan) parsed'
   pure $ ModuleInfo { _module = parsed
                     , _moduleComments = comments
+                    , _modulePath = Just path
                     , _moduleText = text
                     , _moduleSpan = spanOfText path text }
 

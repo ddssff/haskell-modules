@@ -81,7 +81,7 @@ withDecomposedModule env decompose f i@(ModuleInfo {_module = Module _l _h _ps _
     where
       selectedDecls :: [Set (Decl (Scoped SrcSpanInfo))]
       selectedDecls = partitionDeclsBy env decompose i
-      selectedExports:: [Set (ExportSpec (Scoped SrcSpanInfo))]
+      selectedExports :: [Set (ExportSpec (Scoped SrcSpanInfo))]
       selectedExports = fmap (exportsToKeep env i) selectedDecls
       selectedImports :: [Set (ImportSpecWithDecl (Scoped SrcSpanInfo))]
       selectedImports = fmap (uncurry (importsToKeep env i)) (zip selectedDecls selectedExports)
@@ -203,17 +203,17 @@ importsToKeep _ _ _ _ = error "importsToKeep"
 
 -- | Symbols declared by a declaration.  (Should take a single element, not a set.)
 declares :: (Data l, Ord l) => Environment -> ModuleInfo l -> Decl l -> Set Symbol
-declares env i d = declaredSymbols (env, moduleGlobals env (_module i), getModuleName (_module i), d)
+declares env i d = declaredSymbols (env, _module i, d)
 
 exports :: forall l. (Data l, Ord l, Show l) => Environment -> ModuleInfo (Scoped l) -> ExportSpec (Scoped l) -> Set Symbol
-exports env i espec = exportedSymbols (env, moduleGlobals env (_module i), _module i, espec)
+exports env i espec = exportedSymbols (env, _module i, espec)
 
 imports :: forall l. (Data l, Ord l, Show l) => Environment -> ModuleInfo (Scoped l) -> ModuleName (Scoped l) -> Maybe (ModuleName (Scoped l)) -> ImportSpec (Scoped l) -> Set Symbol
-imports env i mname aname ispec = importedSymbols (env, moduleGlobals env (_module i), mname, aname, ispec)
+imports env i mname aname ispec = importedSymbols (env, _module i, mname, aname, ispec)
 
 -- | Symbols used in a declaration - a superset of declares.
 uses :: Environment -> ModuleInfo (Scoped SrcSpanInfo) -> Decl (Scoped SrcSpanInfo) -> Set Symbol
-uses env i b = referencedSymbols (env, moduleGlobals env (_module i), getModuleName (_module i), b)
+uses env i b = referencedSymbols (env, _module i, b)
 
 getTopDeclSymbols' :: (Data l, Eq l) => Environment -> ModuleInfo l -> Decl l -> Set Symbol
 getTopDeclSymbols' env i d = Set.fromList $ getTopDeclSymbols (moduleGlobals env (_module i)) (getModuleName (_module i)) d
