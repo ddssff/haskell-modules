@@ -20,9 +20,9 @@ import Data.Graph.Inductive ( Gr, NodeMap )
 import Data.Maybe ( mapMaybe )
 import Data.Set as Set ( Set, unions, union, toList, null, intersection, fromList, empty )
 import Language.Haskell.Exts.SrcLoc ( SrcSpanInfo )
-import Language.Haskell.Exts.Syntax ( Decl(TypeSig) )
+import Language.Haskell.Exts.Syntax (Decl(TypeSig), Module)
 import Language.Haskell.Modules.FGL ( runGraph, mkGraphM )
-import Language.Haskell.Modules.Info ( ModuleInfo(_module), moduleGlobals )
+import Language.Haskell.Modules.Info ( moduleGlobals )
 import Language.Haskell.Modules.Query ( declares, uses )
 import Language.Haskell.Names ( Environment, Scoped(..), Symbol )
 import Language.Haskell.Names.GlobalSymbolTable ()
@@ -33,23 +33,27 @@ import Language.Haskell.Names.SyntaxUtils ( getModuleName, getModuleDecls )
 -- signature and the corresponding declaration(s).
 newtype DeclGroup l = DeclGroup {unDecs :: [Decl l]} deriving (Data, Eq, Ord, Show, Functor)
 
-declGroupName :: (Data l, Ord l) => Environment -> ModuleInfo l -> DeclGroup l -> Symbol
-declGroupName env i (DeclGroup ds) =
-    case Set.toList (foldr1 Set.intersection (fmap (declares env i) ds)) of
+declGroupName :: (Data l, Ord l) => Environment -> Module l -> DeclGroup l -> Symbol
+declGroupName env m (DeclGroup ds) =
+    case Set.toList (foldr1 Set.intersection (fmap (declares env m) ds)) of
       [s] -> s
       [] -> error "declGroupName 1"
       _ -> error "declGroupName 2"
 
 -- | Declarations come in sets - a signature, followed by one or more
 -- Decls.
-groupDecs :: forall l. (Data l, Ord l, Show l) => Environment -> ModuleInfo (Scoped l) -> [Decl (Scoped l)] -> [DeclGroup (Scoped l)]
+groupDecs ::
+    forall l. (Data l, Ord l, Show l)
+    => Environment
+    -> Module (Scoped l)
+    -> [Decl (Scoped l)] -> [DeclGroup (Scoped l)]
 groupDecs _ _ [] = error "makeDecs - invalid argument"
-groupDecs env i (d1 : ds1) =
+groupDecs env m (d1 : ds1) =
     -- With foldr we encounter the declarations in reverse, so the
     -- signature ends up with the previous declaration.
-    snd $ foldl go (Set.fromList (getTopDeclSymbols table (getModuleName (_module i)) d1), [DeclGroup [d1]]) ds1
+    snd $ foldl go (Set.fromList (getTopDeclSymbols table (getModuleName m) d1), [DeclGroup [d1]]) ds1
     where
-      table = moduleGlobals env (_module i)
+      table = moduleGlobals env m
       go :: (Set Symbol, [DeclGroup (Scoped l)]) -> Decl (Scoped l) -> (Set Symbol, [DeclGroup (Scoped l)])
       go (_, []) _ = (Set.empty, [])
       go (_ss, DeclGroup ds : more) d@(TypeSig {}) =
@@ -58,10 +62,10 @@ groupDecs env i (d1 : ds1) =
       -- If the symbol set is empty we have seen a signature, this must(?)
       -- be the corresponding declaration.
       go (ss, DeclGroup ds : more) d | Set.null ss =
-          let ss' = Set.fromList (getTopDeclSymbols table (getModuleName (_module i)) d) in
+          let ss' = Set.fromList (getTopDeclSymbols table (getModuleName m) d) in
           (Set.union ss ss', DeclGroup (ds ++ [d]) : more)
       go (ss, DeclGroup ds : more) d =
-          let ss' = Set.fromList (getTopDeclSymbols table (getModuleName (_module i)) d) in
+          let ss' = Set.fromList (getTopDeclSymbols table (getModuleName m) d) in
           if Set.null (Set.intersection ss ss')
           then (ss', DeclGroup [d] : DeclGroup ds : more)
           else (Set.union ss ss', DeclGroup (ds ++ [d]) : more)
@@ -72,18 +76,18 @@ groupDecs env i (d1 : ds1) =
 withUsesGraph ::
     forall l r. (l ~ SrcSpanInfo)
     => Environment
-    -> ModuleInfo (Scoped l)
+    -> Module (Scoped l)
     -> (Gr (DeclGroup (Scoped l)) (Set Symbol) -> State (NodeMap (DeclGroup (Scoped l))) r)
     -> (r, NodeMap (DeclGroup (Scoped l)))
-withUsesGraph env i f =
+withUsesGraph env m f =
     runGraph (mkGraphM declGroups (concatMap (\a -> mapMaybe (edge a) declGroups) declGroups) >>= f)
     where
       declGroups :: [DeclGroup (Scoped l)]
-      declGroups = groupDecs env i (getModuleDecls (_module i))
+      declGroups = groupDecs env m (getModuleDecls m)
       -- Create edges from any declaration A to any other declaration
       -- B such that A declares a symbol that B uses.
       edge :: DeclGroup (Scoped l) -> DeclGroup (Scoped l) -> Maybe (DeclGroup (Scoped l), DeclGroup (Scoped l), Set Symbol)
       edge a b = if Set.null common then Nothing else Just (a, b, common)
           where common = Set.intersection
-                           (Set.unions (fmap (declares env i) (unDecs a)))
-                           (Set.unions (fmap (uses (moduleGlobals env (_module i))) (unDecs b)))
+                           (Set.unions (fmap (declares env m) (unDecs a)))
+                           (Set.unions (fmap (uses (moduleGlobals env m)) (unDecs b)))

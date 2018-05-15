@@ -33,9 +33,6 @@ import Language.Haskell.Names.SyntaxUtils
 class DeclaredSymbols a where
     declaredSymbols :: a -> Set Symbol
 
-instance (Ord l, Data l) => DeclaredSymbols (Environment, ModuleInfo l) where
-    declaredSymbols (env, i) = declaredSymbols (env, _module i)
-
 instance (Ord l, Data l) => DeclaredSymbols (Environment, Module l) where
     declaredSymbols (env, m) = Set.unions (fmap (\d -> declaredSymbols (env, m, d)) (getModuleDecls m))
 
@@ -45,9 +42,6 @@ instance (Ord l, Data l) => DeclaredSymbols (Environment, Module l, Decl l) wher
 -- | This duplicates the function of 'exportedSymbols'
 class ExportedSymbols a where
     exportedSymbols' :: a -> Set Symbol
-
-instance (Ord l, Data l) => ExportedSymbols (Environment, ModuleInfo l) where
-    exportedSymbols' (env, i) = exportedSymbols' (env, _module i)
 
 instance (Ord l, Data l) => ExportedSymbols (Environment, ModuleName l) where
     -- Find all the of the module's symbols in the global symbol table
@@ -74,8 +68,8 @@ instance (Ord l, Data l) => ExportedSymbols (Environment, Module l, ExportSpec l
         -- Find all symbols imported from name
         importedFrom (importedSymbols (env, m))
         where importedFrom :: Set Symbol -> Set Symbol
-              importedFrom imports =
-                  Set.filter (\sym -> symbolModule sym == dropAnn name) imports
+              importedFrom isyms =
+                  Set.filter (\sym -> symbolModule sym == dropAnn name) isyms
 
 class ImportedModules a where
     importedModules :: a -> Set (ModuleName ())
@@ -93,9 +87,6 @@ instance ImportedModules (ImportDecl l) where
 -- this duplicates the Language.Haskell.Names.Imports.importTable.
 class ImportedSymbols a where
     importedSymbols :: a -> Set Symbol
-
-instance (Ord l, Data l) => ImportedSymbols (Environment, ModuleInfo l) where
-    importedSymbols (env, i) = importedSymbols (env, _module i)
 
 instance (Ord l, Data l) => ImportedSymbols (Environment, Module l) where
     importedSymbols (env, m) = Set.unions (fmap (\i -> importedSymbols (env, m, i)) (getImports m))
@@ -129,9 +120,6 @@ toQName mname name = Qual () (dropAnn mname) (dropAnn name)
 -- declared.
 class ReferencedNames a where
   referencedNames :: a -> Set (QName (Scoped SrcSpanInfo))
-
-instance (l ~ Scoped SrcSpanInfo) => ReferencedNames (ModuleInfo l) where
-    referencedNames i = referencedNames (_module i)
 
 instance (l ~ Scoped SrcSpanInfo) => ReferencedNames (Module l) where
     referencedNames m =
@@ -168,14 +156,21 @@ referencedSymbols :: (l ~ Scoped SrcSpanInfo) => Environment -> Module l -> Set 
 referencedSymbols env m = lookupNames (referencedNames m) (moduleGlobals env m)
 
 -- | Symbols declared by a declaration.  (Should take a single element, not a set.)
-declares :: (Data l, Ord l) => Environment -> ModuleInfo l -> Decl l -> Set Symbol
-declares env i d = declaredSymbols (env, _module i, d)
+declares :: (Data l, Ord l) => Environment -> Module l -> Decl l -> Set Symbol
+declares env m d = declaredSymbols (env, m, d)
 
-exports :: forall l. (Data l, Ord l, Show l) => Environment -> ModuleInfo (Scoped l) -> ExportSpec (Scoped l) -> Set Symbol
-exports env i espec = exportedSymbols' (env, _module i, espec)
+exports :: forall l. (Data l, Ord l, Show l) => Environment -> Module (Scoped l) -> ExportSpec (Scoped l) -> Set Symbol
+exports env m espec = exportedSymbols' (env, m, espec)
 
-imports :: forall l. (Data l, Ord l, Show l) => Environment -> ModuleInfo (Scoped l) -> ModuleName (Scoped l) -> Maybe (ModuleName (Scoped l)) -> ImportSpec (Scoped l) -> Set Symbol
-imports env i mname aname ispec = importedSymbols (env, _module i, mname, aname, ispec)
+imports ::
+    forall l. (Data l, Ord l, Show l)
+    => Environment
+    -> Module (Scoped l)
+    -> ModuleName (Scoped l)
+    -> Maybe (ModuleName (Scoped l))
+    -> ImportSpec (Scoped l)
+    -> Set Symbol
+imports env m mname aname ispec = importedSymbols (env, m, mname, aname, ispec)
 
 -- | Symbols used in a declaration - a superset of declares.
 uses :: Table -> Decl (Scoped SrcSpanInfo) -> Set Symbol

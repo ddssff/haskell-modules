@@ -74,11 +74,11 @@ withDecomposedModule env decompose f i@(ModuleInfo {_module = Module _l _h _ps _
                                 (fmap (flip Set.member) selectedImports))
     where
       selectedDecls :: [Set (Decl (Scoped SrcSpanInfo))]
-      selectedDecls = partitionDeclsBy env decompose i
+      selectedDecls = partitionDeclsBy env decompose (_module i)
       selectedExports :: [Set (ExportSpec (Scoped SrcSpanInfo))]
-      selectedExports = fmap (exportsToKeep env i) selectedDecls
+      selectedExports = fmap (exportsToKeep env (_module i)) selectedDecls
       selectedImports :: [Set (ImportSpecWithDecl (Scoped SrcSpanInfo))]
-      selectedImports = fmap (uncurry (importsToKeep env i)) (zip selectedDecls selectedExports)
+      selectedImports = fmap (uncurry (importsToKeep env (_module i))) (zip selectedDecls selectedExports)
 withDecomposedModule _env _decompose f i@(ModuleInfo {_module = _m}) =
     [f i (const True) (const True) (const True)]
 
@@ -89,10 +89,10 @@ partitionDeclsBy ::
     => Environment
     -> (Gr (DeclGroup (Scoped l)) (Set Symbol) -> State (NodeMap (DeclGroup (Scoped l))) [[DeclGroup (Scoped l)]])
     -- ^ A query on the "uses" graph, partitions the declaration groups.
-    -> ModuleInfo (Scoped l)
+    -> Module (Scoped l)
     -> [Set (Decl (Scoped l))]
-partitionDeclsBy env decompose i = do
-  fst $ withUsesGraph env i $ \g -> do
+partitionDeclsBy env decompose m = do
+  fst $ withUsesGraph env m $ \g -> do
     (tmp :: [[DeclGroup (Scoped l)]]) <- decompose g
     return $ fmap (Set.fromList . concat . fmap unDecs) tmp
 
@@ -101,14 +101,14 @@ partitionDeclsBy env decompose i = do
 exportsToKeep ::
     forall l. (Data l, Ord l, Show l)
     => Environment
-    -> ModuleInfo (Scoped l)
+    -> Module (Scoped l)
     -> Set (Decl (Scoped l))
     -> Set (ExportSpec (Scoped l))
-exportsToKeep env i@(ModuleInfo {_module = Module _ (Just (ModuleHead _ _ _ (Just (ExportSpecList _ es)))) _ _ _}) ds  =
+exportsToKeep env m@(Module _ (Just (ModuleHead _ _ _ (Just (ExportSpecList _ es)))) _ _ _) ds  =
   Foldable.foldl go Set.empty es
   where
-    syms = foldr1 Set.union (Set.map (declares env i) ds)
-    go r e = if not (Set.null (Set.intersection syms (exports env i e))) then Set.insert e r else r
+    syms = foldr1 Set.union (Set.map (declares env m) ds)
+    go r e = if not (Set.null (Set.intersection syms (exports env m e))) then Set.insert e r else r
 exportsToKeep _ _ _ = Set.empty
 
 -- | Result is a set of pairs, an ImportDecl and some ImportSpec that
@@ -116,17 +116,17 @@ exportsToKeep _ _ _ = Set.empty
 importsToKeep ::
     forall l. (l ~ SrcSpanInfo)
     => Environment
-    -> ModuleInfo (Scoped l)
+    -> Module (Scoped l)
     -> Set (Decl (Scoped l))
     -> Set (ExportSpec (Scoped l))
     -> Set (ImportSpecWithDecl (Scoped l))
-importsToKeep env i@(ModuleInfo {_module = Module _ _ _ is _}) ds es =
+importsToKeep env m@(Module _ _ _ is _) ds es =
   foldl goDecl Set.empty is
   where
     -- We need to keep any import if it is either used or re-exported
     syms = Set.union
-             (flatten (Set.map (uses (moduleGlobals env (_module i))) ds))
-             (flatten (Set.map (exports env i) es))
+             (flatten (Set.map (uses (moduleGlobals env m)) ds))
+             (flatten (Set.map (exports env m) es))
              -- (declares i ds) -- All the symbols declared in this module
              -- (error "importsToKeep" :: Set Symbol)
              -- (Set.unions (fmap (exports env i) (es :: [ExportSpec (Scoped l)]) :: [Set Symbol]))  -- All the symbols exported by this module
@@ -143,7 +143,7 @@ importsToKeep env i@(ModuleInfo {_module = Module _ _ _ is _}) ds es =
         -> ImportSpec (Scoped l)
         -> Set (ImportSpecWithDecl (Scoped l))
     goSpec idecl r ispec =
-        if not (Set.null (Set.intersection (imports env i (importModule idecl) (importAs idecl) ispec) syms))
+        if not (Set.null (Set.intersection (imports env m (importModule idecl) (importAs idecl) ispec) syms))
         then Set.insert (idecl, ispec) r
         else r
 importsToKeep _ _ _ _ = error "importsToKeep"
@@ -151,10 +151,10 @@ importsToKeep _ _ _ _ = error "importsToKeep"
 cleanImports ::
     forall l. (l ~ Scoped SrcSpanInfo)
     => Environment
-    -> ModuleInfo l
+    -> Module l
     -> ImportSpecWithDecl l
     -> Bool
-cleanImports env i@(ModuleInfo {_module = m@(Module _ _ _ is _)}) =
+cleanImports env m@(Module _ _ _ is _) =
     flip Set.member (foldl goDecl Set.empty is)
     where
       refs :: Set Symbol
@@ -164,7 +164,7 @@ cleanImports env i@(ModuleInfo {_module = m@(Module _ _ _ is _)}) =
       -- maps to symbols that are not in the set refs should be
       -- dropped.
       table :: Map (QName ()) [Symbol]
-      table = importTable env (_module i)
+      table = importTable env m
       goDecl :: Set (ImportSpecWithDecl l) -> ImportDecl l -> Set (ImportSpecWithDecl l)
       goDecl r idecl@(ImportDecl {importModule = mname,
                                   importAs = aname,

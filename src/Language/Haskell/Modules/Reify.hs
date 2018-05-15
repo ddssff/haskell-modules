@@ -17,6 +17,7 @@ import Data.Map as Map (fromList)
 import Data.Set as Set (difference, fromList, insert, member, Set, toList, unions)
 import qualified Language.Haskell.Exts.Syntax as Exts (ModuleName(ModuleName), Name(Symbol, Ident))
 import Language.Haskell.Exts.SrcLoc (SrcSpanInfo)
+import Language.Haskell.Exts.Syntax (Module)
 import Language.Haskell.Interpreter as Hint (runInterpreter, getModuleExports, ModuleElem(..))
 import Language.Haskell.Modules.CPP (GHCOpts)
 import Language.Haskell.Modules.Danger (reify')
@@ -39,18 +40,18 @@ buildEnvironmentForSource :: Int -> GHCOpts -> (Name -> Maybe Info) -> [FilePath
 buildEnvironmentForSource verbosity opts danger paths = do
   texts <- runIO (mapM readFile paths)
   mods <- runIO (mapM (uncurry (parseModule opts)) (zip paths texts))
-  buildEnvironmentForModules verbosity danger mods
+  buildEnvironmentForModules verbosity danger (fmap _module mods)
 
 -- | Build the 'Environment' required by the parsed modules.
-buildEnvironmentForModules :: forall l. (l ~ SrcSpanInfo) => Int -> (Name -> Maybe Info) -> [ModuleInfo l] -> ExpQ -- IO Environment
+buildEnvironmentForModules :: forall l. (l ~ SrcSpanInfo) => Int -> (Name -> Maybe Info) -> [Module l] -> ExpQ -- IO Environment
 buildEnvironmentForModules verbosity danger mods = do
   buildEnvironmentForNames verbosity danger
     (Set.difference
        (Set.insert
           -- There shouldn't be any reason not to import Prelude into the Environment.
           (Exts.ModuleName () "Prelude")
-          (Set.unions (fmap (importedModules . _module) mods)))
-       (Set.fromList (fmap (dropAnn . getModuleName . _module) mods)))
+          (Set.unions (fmap importedModules mods)))
+       (Set.fromList (fmap (dropAnn . getModuleName) mods)))
 
 -- | Build the 'Environment' required by the named modules.  This builds
 -- an environment that contains all the modules imported by any of the

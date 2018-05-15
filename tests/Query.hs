@@ -55,7 +55,7 @@ test1 =
                                  Selector {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "_verbosity", typeName = Ident () "RenderInfo", constructors = [Ident () "RenderInfo"]},
                                  Constructor {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "RenderInfo", typeName = Ident () "RenderInfo"},
                                  Data {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "RenderInfo"}])
-                  (declaredSymbols (env', i))
+                  (declaredSymbols (env', _module i))
 
 test2 :: Test
 test2 =
@@ -85,7 +85,7 @@ test2 =
                                  Value {symbolModule = ModuleName () "Language.Haskell.Modules.FGL", symbolName = Ident () "runGraph"},
                                  Value {symbolModule = ModuleName () "Language.Haskell.Modules.FGL", symbolName = Ident () "runGraphT"},
                                  Value {symbolModule = ModuleName () "Language.Haskell.Modules.FGL", symbolName = Ident () "tests"}])
-                  (exportedSymbols' (env', i))
+                  (exportedSymbols' (env', _module i))
 
 test3 :: Test
 test3 =
@@ -137,7 +137,7 @@ test3 =
                     NewType {symbolModule = ModuleName () "Data.Graph.Inductive.PatriciaTree", symbolName = Ident () "Gr"},
                     Class {symbolModule = ModuleName () "Control.Monad.State.Class", symbolName = Ident () "MonadState"},
                     Class {symbolModule = ModuleName () "Data.Graph.Inductive.Graph", symbolName = Ident () "DynGraph"}])
-                  (importedSymbols (env', i))
+                  (importedSymbols (env', _module i))
 
 -- | Symbols declared but not exported are local
 test4 :: Test
@@ -150,7 +150,7 @@ test4 =
                     Value {symbolModule = ModuleName () "Language.Haskell.Modules.FGL", symbolName = Ident () "evalGraph'"},
                     Value {symbolModule = ModuleName () "Language.Haskell.Modules.FGL", symbolName = Ident () "foldrM'"},
                     Value {symbolModule = ModuleName () "Language.Haskell.Modules.FGL", symbolName = Ident () "labEdgesM'"}])
-                  (Set.difference (declaredSymbols (env', i)) (exportedSymbols' (env', i)))
+                  (Set.difference (declaredSymbols (env', _module i)) (exportedSymbols' (env', _module i)))
 
 test5 :: Test
 test5 =
@@ -237,7 +237,7 @@ test6 =
                              Selector {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "_moduleInfo", typeName = Ident () "RenderInfo", constructors = [Ident () "RenderInfo"]},
                              Selector {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "_prefix", typeName = Ident () "RenderInfo", constructors = [Ident () "RenderInfo"]}
                             ])
-                  (Set.difference (declaredSymbols (env', i)) (referencedSymbols env' (_module i)))
+                  (Set.difference (declaredSymbols (env', _module i)) (referencedSymbols env' (_module i)))
 
 demo1 = do
   [i] <- let path = "src/Langauge/Haskell/Modules/FGL.hs" in readFile path >>= \text -> evalStateT (parseAndAnnotateModules def [(path, text)]) env2
@@ -250,17 +250,17 @@ demo2 = do
 -- | Pull out context and everything that uses it: context, labNode
 demo3 = do
   [i] <- let path = "src/Langauge/Haskell/Modules/FGL.hs" in readFile path >>= \text -> evalStateT (parseAndAnnotateModules def [(path, text)]) env2
-  mapM_ (\(s, n) -> writeFile ("Tmp" ++ show n ++ ".hs") s) (zip (withDecomposedModule env2 (bisect (\d -> any (testSymbolString (== "Language.Haskell.Modules.FGL.context")) (Set.unions (fmap (declares env2 i) (unDecs d))))) renderModule i) [1..])
+  mapM_ (\(s, n) -> writeFile ("Tmp" ++ show n ++ ".hs") s) (zip (withDecomposedModule env2 (bisect (\d -> any (testSymbolString (== "Language.Haskell.Modules.FGL.context")) (Set.unions (fmap (declares env2 (_module i)) (unDecs d))))) renderModule i) [1..])
 
 -- | Pull out context and everything it uses.
 demo4 = do
   [i] <- let path = "src/Langauge/Haskell/Modules/FGL.hs" in readFile path >>= \text -> evalStateT (parseAndAnnotateModules def [(path, text)]) env2
-  mapM_ (\(s, n) -> writeFile ("Tmp" ++ show n ++ ".hs") s) (zip (withDecomposedModule env2 (bisect (\d -> any (testSymbolString (== "Language.Haskell.Modules.FGL.context")) (Set.unions (fmap (declares env2 i) (unDecs d)))) . grev) renderModule i) [1..])
+  mapM_ (\(s, n) -> writeFile ("Tmp" ++ show n ++ ".hs") s) (zip (withDecomposedModule env2 (bisect (\d -> any (testSymbolString (== "Language.Haskell.Modules.FGL.context")) (Set.unions (fmap (declares env2 (_module i)) (unDecs d)))) . grev) renderModule i) [1..])
 
 demo5 = do
   let path = "src/Language/Haskell/Modules/Info.hs"
   ([i], env) <- readFile path >>= \text -> runStateT (parseAndAnnotateModules def [(path, text)]) env2
-  let p = cleanImports env i
+  let p = cleanImports env (_module i)
       -- m' = cleanImports env (_module i)
       s = renderModule i (const True) (const True) p
   putStrLn s
