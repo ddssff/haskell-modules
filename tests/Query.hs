@@ -3,9 +3,9 @@
 
 module Query where
 
-import Control.Monad.State (evalStateT, runStateT)
+import Control.Monad.State (runStateT)
 import Data.Default (def)
-import Data.Graph.Inductive (grev)
+--import Data.Graph.Inductive (grev)
 import Data.Set as Set (difference, filter, fromList, map, union, unions)
 import Language.Haskell.Exts (Name(..), QName(..))
 import Language.Haskell.Exts.Syntax (ModuleName(..))
@@ -18,12 +18,12 @@ import Language.Haskell.Modules.Graphs (DeclGroup(unDecs))
 import Language.Haskell.Modules.Info (ModuleInfo(..))
 import Language.Haskell.Modules.Orphans ()
 import Language.Haskell.Modules.Parse (parseAndAnnotateModules)
-import Language.Haskell.Modules.Query (declares, declaredSymbols, exportedSymbols', importedSymbols, referencedNames, referencedSymbols)
+import Language.Haskell.Modules.Query (declaredSymbols, exportedSymbols', importedSymbols, referencedNames, referencedSymbols)
 import Language.Haskell.Modules.Render (renderModule)
 import Language.Haskell.Modules.Split (bisect, withDecomposedModule, cleanImports)
 import Language.Haskell.Names.Exports (exportedSymbols)
 import Language.Haskell.Names.Imports (importTable)
-import Language.Haskell.Names.ModuleSymbols (getTopDeclSymbols, moduleTable)
+import Language.Haskell.Names.ModuleSymbols (moduleTable)
 import Language.Haskell.Names.SyntaxUtils (dropAnn)
 import System.IO (readFile, writeFile)
 import Test.HUnit hiding (path)
@@ -130,6 +130,8 @@ test3 =
                     Method {symbolModule = ModuleName () "Data.Graph.Inductive.Graph", symbolName = Ident () "empty", className = Ident () "Graph"},
                     Method {symbolModule = ModuleName () "Data.Graph.Inductive.Graph", symbolName = Ident () "labEdges", className = Ident () "Graph"},
                     Method {symbolModule = ModuleName () "Data.Graph.Inductive.Graph", symbolName = Ident () "labNodes", className = Ident () "Graph"},
+                    Constructor {symbolModule = ModuleName () "Test.HUnit.Base", symbolName = Ident () "TestCase", typeName = Ident () "Test"},
+                    Constructor {symbolModule = ModuleName () "Test.HUnit.Base", symbolName = Ident () "TestList", typeName = Ident () "Test"},
                     Type {symbolModule = ModuleName () "Data.Graph.Inductive.Graph", symbolName = Ident () "LNode"},
                     Type {symbolModule = ModuleName () "Data.Graph.Inductive.Graph", symbolName = Ident () "Node"},
                     Data {symbolModule = ModuleName () "Data.Graph.Inductive.NodeMap", symbolName = Ident () "NodeMap"},
@@ -299,8 +301,6 @@ test5f :: Test
 test5f =
   TestCase $ do let path = "src/Language/Haskell/Modules/Info.hs"
                 ([i], env') <- readFile path >>= \text -> runStateT (parseAndAnnotateModules def [(path, text)]) env2
-                let m = _module i
-                    m' = dropAnn m
                 assertEqual "imported 2"
                   (fromList [Value {symbolModule = ModuleName () "Data.OldList", symbolName = Ident () "nub"}])
                   (importedSymbols (env', _module i))
@@ -338,38 +338,17 @@ test6 =
   TestCase $ do let path = "src/Language/Haskell/Modules/Render.hs"
                 ([i], env') <- readFile path >>= \text -> runStateT (parseAndAnnotateModules def [(path, text)]) env2
                 assertEqual "defined but not used 1"
-                  (fromList [Value {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "keep'"},
-                             Value {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "keep''"},
-                             Value {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "keepV"},
-                             Value {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "prefixed"},
-                             -- Used by a function which is itself unused.  Needs a graph.
-                             -- Value {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "labelled"},
-                             Value {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "skipV"},
-                             Value {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "verbosely"},
-                             -- These three would be used by the expanded template haskell code
-                             Selector {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "_label", typeName = Ident () "RenderInfo", constructors = [Ident () "RenderInfo"]},
-                             Selector {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "_moduleInfo", typeName = Ident () "RenderInfo", constructors = [Ident () "RenderInfo"]},
-                             Selector {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "_prefix", typeName = Ident () "RenderInfo", constructors = [Ident () "RenderInfo"]}
-                            ])
+                  (fromList []) -- need a better example
                   (Set.difference (declaredSymbols (env', _module i)) (referencedSymbols env' (_module i)))
 
 demo1 = do
-  [i] <- let path = "src/Langauge/Haskell/Modules/FGL.hs" in readFile path >>= \text -> evalStateT (parseAndAnnotateModules def [(path, text)]) env2
-  mapM_ (\(s, n) -> writeFile ("Tmp" ++ show n ++ ".hs") s) (zip (withDecomposedModule env2 components renderModule i) [1..])
-
-demo2 = do
-  [i] <- let path = "src/Langauge/Haskell/Modules/FGL.hs" in readFile path >>= \text -> evalStateT (parseAndAnnotateModules def [(path, text)]) env2
-  mapM_ (\(s, n) -> writeFile ("Tmp" ++ show n ++ ".hs") s) (zip (withDecomposedModule env2 (components . grev) renderModule i) [1..])
+  ([i], env) <- let path = "src/Language/Haskell/Modules/FGL.hs" in readFile path >>= \text -> runStateT (parseAndAnnotateModules def [(path, text)]) env2
+  mapM_ (\(s, n) -> writeFile ("Tmp" ++ show n ++ ".hs") s) (zip (withDecomposedModule env components renderModule i) [1..])
 
 -- | Pull out context and everything that uses it: context, labNode
 demo3 = do
-  [i] <- let path = "src/Langauge/Haskell/Modules/FGL.hs" in readFile path >>= \text -> evalStateT (parseAndAnnotateModules def [(path, text)]) env2
-  mapM_ (\(s, n) -> writeFile ("Tmp" ++ show n ++ ".hs") s) (zip (withDecomposedModule env2 (bisect (\d -> any (testSymbolString (== "Language.Haskell.Modules.FGL.context")) (Set.unions (fmap (declares env2 (_module i)) (unDecs d))))) renderModule i) [1..])
-
--- | Pull out context and everything it uses.
-demo4 = do
-  [i] <- let path = "src/Langauge/Haskell/Modules/FGL.hs" in readFile path >>= \text -> evalStateT (parseAndAnnotateModules def [(path, text)]) env2
-  mapM_ (\(s, n) -> writeFile ("Tmp" ++ show n ++ ".hs") s) (zip (withDecomposedModule env2 (bisect (\d -> any (testSymbolString (== "Language.Haskell.Modules.FGL.context")) (Set.unions (fmap (declares env2 (_module i)) (unDecs d)))) . grev) renderModule i) [1..])
+  ([i], env) <- let path = "src/Language/Haskell/Modules/FGL.hs" in readFile path >>= \text -> runStateT (parseAndAnnotateModules def [(path, text)]) env2
+  mapM_ (\(s, n) -> writeFile ("Tmp" ++ show n ++ ".hs") s) (zip (withDecomposedModule env (bisect (\d -> any (testSymbolString (== "Language.Haskell.Modules.FGL.context")) (Set.unions (fmap (\d -> declaredSymbols (env2, _module i, d)) (unDecs d))))) renderModule i) [1..])
 
 demo5 = do
   let path = "src/Language/Haskell/Modules/Info.hs"

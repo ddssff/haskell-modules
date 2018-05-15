@@ -23,7 +23,7 @@ import Language.Haskell.Exts.SrcLoc ( SrcSpanInfo )
 import Language.Haskell.Exts.Syntax (Decl(TypeSig), Module)
 import Language.Haskell.Modules.FGL ( runGraph, mkGraphM )
 import Language.Haskell.Modules.Info ( moduleGlobals )
-import Language.Haskell.Modules.Query ( declares, uses )
+import Language.Haskell.Modules.Query (declaredSymbols, lookupNames, referencedNames)
 import Language.Haskell.Names ( Environment, Scoped(..), Symbol )
 import Language.Haskell.Names.GlobalSymbolTable ()
 import Language.Haskell.Names.ModuleSymbols ( getTopDeclSymbols )
@@ -35,7 +35,7 @@ newtype DeclGroup l = DeclGroup {unDecs :: [Decl l]} deriving (Data, Eq, Ord, Sh
 
 declGroupName :: (Data l, Ord l) => Environment -> Module l -> DeclGroup l -> Symbol
 declGroupName env m (DeclGroup ds) =
-    case Set.toList (foldr1 Set.intersection (fmap (declares env m) ds)) of
+    case Set.toList (foldr1 Set.intersection (fmap (\d -> declaredSymbols (env, m, d)) ds)) of
       [s] -> s
       [] -> error "declGroupName 1"
       _ -> error "declGroupName 2"
@@ -89,5 +89,6 @@ withUsesGraph env m f =
       edge :: DeclGroup (Scoped l) -> DeclGroup (Scoped l) -> Maybe (DeclGroup (Scoped l), DeclGroup (Scoped l), Set Symbol)
       edge a b = if Set.null common then Nothing else Just (a, b, common)
           where common = Set.intersection
-                           (Set.unions (fmap (declares env m) (unDecs a)))
-                           (Set.unions (fmap (uses (moduleGlobals env m)) (unDecs b)))
+                           (Set.unions (fmap (\d -> declaredSymbols (env, m, d)) (unDecs b)))
+                           -- (Set.unions (fmap ({-uses (moduleGlobals env m)-}) (unDecs a)))
+                           (Set.unions (fmap (\d -> lookupNames (referencedNames d) (moduleGlobals env m)) (unDecs a)))
