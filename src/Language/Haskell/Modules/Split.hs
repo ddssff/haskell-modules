@@ -85,11 +85,6 @@ withDecomposedModule env decompose f i@(ModuleInfo {_module = Module _l _h _ps _
       selectedExports = fmap (exportsToKeep env i) selectedDecls
       selectedImports :: [Set (ImportSpecWithDecl (Scoped SrcSpanInfo))]
       selectedImports = fmap (uncurry (importsToKeep env i)) (zip selectedDecls selectedExports)
-{-
-      selectedComments = fmap (uncurry (filterComments (fmap (srcInfoSpan . unScope) i)))
-                           (zip (fmap (Set.map (fmap (srcInfoSpan . unScope))) selectedDecls)
-                                (fmap (Set.map (fmap (srcInfoSpan . unScope))) selectedExports))
--}
 withDecomposedModule _env _decompose f i@(ModuleInfo {_module = _m}) =
     [f i (const True) (const True) (const True)]
 
@@ -120,7 +115,7 @@ withUsesGraph env i f =
     runGraph (mkGraphM declGroups (concatMap (\a -> mapMaybe (edge a) declGroups) declGroups) >>= f)
     where
       declGroups :: [DeclGroup (Scoped l)]
-      declGroups = groupDecs i (getModuleDecls (_module i))
+      declGroups = groupDecs env i (getModuleDecls (_module i))
       -- Create edges from any declaration A to any other declaration
       -- B such that A declares a symbol that B uses.
       edge :: DeclGroup (Scoped l) -> DeclGroup (Scoped l) -> Maybe (DeclGroup (Scoped l), DeclGroup (Scoped l), Set Symbol)
@@ -131,12 +126,12 @@ withUsesGraph env i f =
 
 -- | Declarations come in sets - a signature, followed by one or more
 -- Decls.
-groupDecs :: forall l. (Data l, Ord l, Show l) => ModuleInfo (Scoped l) -> [Decl (Scoped l)] -> [DeclGroup (Scoped l)]
-groupDecs _ [] = error "makeDecs - invalid argument"
-groupDecs i (d1 : ds1) =
+groupDecs :: forall l. (Data l, Ord l, Show l) => Environment -> ModuleInfo (Scoped l) -> [Decl (Scoped l)] -> [DeclGroup (Scoped l)]
+groupDecs _ _ [] = error "makeDecs - invalid argument"
+groupDecs env i (d1 : ds1) =
     -- With foldr we encounter the declarations in reverse, so the
     -- signature ends up with the previous declaration.
-    snd $ foldl go (getTopDeclSymbols' i d1, [DeclGroup [d1]]) ds1
+    snd $ foldl go (getTopDeclSymbols' env i d1, [DeclGroup [d1]]) ds1
     where
       go :: (Set Symbol, [DeclGroup (Scoped l)]) -> Decl (Scoped l) -> (Set Symbol, [DeclGroup (Scoped l)])
       go (_, []) _ = (Set.empty, [])
@@ -146,10 +141,10 @@ groupDecs i (d1 : ds1) =
       -- If the symbol set is empty we have seen a signature, this must(?)
       -- be the corresponding declaration.
       go (ss, DeclGroup ds : more) d | Set.null ss =
-          let ss' = getTopDeclSymbols' i d in
+          let ss' = getTopDeclSymbols' env i d in
           (Set.union ss ss', DeclGroup (ds ++ [d]) : more)
       go (ss, DeclGroup ds : more) d =
-          let ss' = getTopDeclSymbols' i d in
+          let ss' = getTopDeclSymbols' env i d in
           if Set.null (Set.intersection ss ss')
           then (ss', DeclGroup [d] : DeclGroup ds : more)
           else (Set.union ss ss', DeclGroup (ds ++ [d]) : more)
@@ -206,75 +201,19 @@ importsToKeep env i@(ModuleInfo {_module = Module _ _ _ is _}) ds es =
         else r
 importsToKeep _ _ _ _ = error "importsToKeep"
 
-{-
--- | We now have sets describing which declarations to keep and which
--- export specs to keep.  This function partitions the comment list.
--- (Comments associated with the header outside the export list are
--- duplicated in all modules.)
-filterComments ::
-       ModuleInfo SrcSpan
-    -> Set (Decl SrcSpan)
-    -> Set (ExportSpec SrcSpan)
-    -> Set Comment
-filterComments (ModuleInfo {_module = Module _l h _ps _is ds, _moduleComments = cs}) selectedDecls selectedExports =
-    -- In the export list we remove anything before a removed
-    -- ExportSpec, and if the final ExportSpec is removed we remove
-    -- anything after it until the end of the ExportSpecList.
-    Set.fromList (prescan1 exportStatus cs [])
-    --Set.union (selectedComments cs Set.empty) filterDeclComments
-    where
-      exportStatus :: [(ExportSpec SrcSpan, Bool)]
-      exportStatus = case h of
-                       Just (ModuleHead _ _ _ (Just (ExportSpecList _ es))) -> zip es (fmap (`Set.member` selectedExports) es)
-                       _ -> []
-      declStatus :: [(Decl SrcSpan, Bool)]
-      declStatus = zip ds (fmap (`Set.member` selectedDecls) ds)
-
-      prescan1 :: [(ExportSpec SrcSpan, Bool)] -> [Comment] -> [Comment] -> [Comment]
-      prescan1 es@((e, _) : _more) (c1 : c2@(Comment _ cspan _) : cs') r
-        | srcSpanEnd cspan < srcSpanStart (ann e) = prescan1 es (c2 : cs') (c1 : r)
-      prescan1 es cs' r = scanExports es cs' r
-
-      scanExports :: [(ExportSpec SrcSpan, Bool)] -> [Comment] -> [Comment] -> [Comment]
-      scanExports es@((e, False) : _more) ((Comment _ cspan _) : cs') r
-        | srcSpanEnd cspan < srcSpanEnd (ann e) = scanExports es cs' r
-      scanExports es@((e, True) : _more) (c1@(Comment _ cspan _) : cs') r
-        | srcSpanEnd cspan < srcSpanEnd (ann e) = scanExports es cs' (c1 : r)
-      scanExports ((_e, _) : more) (c1 : cs') r = scanExports more (c1 : cs') r
-      scanExports [] cs' r = prescan2 declStatus cs' r
-      scanExports _ [] r = prescan2 declStatus cs r
-
-      -- Scan comments thru the one before the one before the first decl
-      prescan2 :: [(Decl SrcSpan, Bool)] -> [Comment] -> [Comment] -> [Comment]
-      prescan2 ds'@((d, _) : _more) (c1 : c2@(Comment _ cspan _) : cs') r
-        | srcSpanEnd cspan < srcSpanStart (ann d) = prescan2 ds' (c2 : cs') (c1 : r)
-      prescan2 ds' cs' r = scanDecls ds' cs' r
-      -- We have reached the comment that directly precedes the
-      -- declaration section.
-      scanDecls :: [(Decl SrcSpan, Bool)] -> [Comment] -> [Comment] -> [Comment]
-      scanDecls ds'@((d, False) : _more) ((Comment _ cspan _) : cs') r
-        | srcSpanEnd cspan < srcSpanEnd (ann d) = scanDecls ds' cs' r
-      scanDecls ds'@((d, True) : _more) (c1@(Comment _ cspan _) : cs') r
-        | srcSpanEnd cspan < srcSpanEnd (ann d) = scanDecls ds' cs' (c1 : r)
-      scanDecls ((_,  _) : more) (c1 : cs') r = scanDecls more (c1 : cs') r
-      scanDecls [] cs' r = reverse r ++ cs'
-      scanDecls _ [] r = reverse r
-filterComments _ _ _ = error "filterComments"
--}
-
 -- | Symbols declared by a declaration.  (Should take a single element, not a set.)
 declares :: (Data l, Ord l) => Environment -> ModuleInfo l -> Decl l -> Set Symbol
-declares env i d = declaredSymbols (env, _moduleGlobals i, getModuleName (_module i), d)
+declares env i d = declaredSymbols (env, moduleGlobals env (_module i), getModuleName (_module i), d)
 
 exports :: forall l. (Data l, Ord l, Show l) => Environment -> ModuleInfo (Scoped l) -> ExportSpec (Scoped l) -> Set Symbol
-exports env i espec = exportedSymbols (env, _moduleGlobals i, _module i, espec)
+exports env i espec = exportedSymbols (env, moduleGlobals env (_module i), _module i, espec)
 
 imports :: forall l. (Data l, Ord l, Show l) => Environment -> ModuleInfo (Scoped l) -> ModuleName (Scoped l) -> Maybe (ModuleName (Scoped l)) -> ImportSpec (Scoped l) -> Set Symbol
-imports env i mname aname ispec = importedSymbols (env, _moduleGlobals i, mname, aname, ispec)
+imports env i mname aname ispec = importedSymbols (env, moduleGlobals env (_module i), mname, aname, ispec)
 
 -- | Symbols used in a declaration - a superset of declares.
 uses :: Environment -> ModuleInfo (Scoped SrcSpanInfo) -> Decl (Scoped SrcSpanInfo) -> Set Symbol
-uses env i b = referencedSymbols (env, _moduleGlobals i, getModuleName (_module i), b)
+uses env i b = referencedSymbols (env, moduleGlobals env (_module i), getModuleName (_module i), b)
 
-getTopDeclSymbols' :: (Data l, Eq l) => ModuleInfo l -> Decl l -> Set Symbol
-getTopDeclSymbols' i d = Set.fromList $ getTopDeclSymbols (_moduleGlobals i) (getModuleName (_module i)) d
+getTopDeclSymbols' :: (Data l, Eq l) => Environment -> ModuleInfo l -> Decl l -> Set Symbol
+getTopDeclSymbols' env i d = Set.fromList $ getTopDeclSymbols (moduleGlobals env (_module i)) (getModuleName (_module i)) d

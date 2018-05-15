@@ -41,8 +41,7 @@ parseModule opts path text = do
   pure $ ModuleInfo { _module = parsed
                     , _moduleComments = comments
                     , _moduleText = text
-                    , _moduleSpan = spanOfText path text
-                    , _moduleGlobals = mempty }
+                    , _moduleSpan = spanOfText path text }
 
 parseAndAnnotateModules ::
     (MonadState Environment m, MonadIO m)
@@ -56,8 +55,7 @@ addScope :: MonadState Environment m => [ModuleInfo SrcSpanInfo] -> m [ModuleInf
 addScope mods = do
   modify (resolve (fmap _module mods))
   env <- get
-  return $ fmap (\m -> m {_module = annotate env (_module m),
-                          _moduleGlobals = moduleTable (importTable env (_module m)) (_module m)}) mods
+  return $ fmap (\m -> m {_module = annotate env (_module m)}) mods
 
 unScope :: Scoped a -> a
 unScope (Scoped _ l) = l

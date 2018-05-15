@@ -121,6 +121,7 @@ test2 = TestCase (assertEqual "buildEnvironment 2"
                                    (ModuleName () "Data.Tuple",5),
                                    (ModuleName () "Data.Version",7),
                                    (ModuleName () "Debug.Show",2),
+                                   (ModuleName () "Debug.Trace",13),
                                    (ModuleName () "Distribution.Compat.ReadP",34),
                                    (ModuleName () "Distribution.Package",32),
                                    (ModuleName () "Distribution.Text",6),

@@ -28,7 +28,7 @@ class DeclaredSymbols a where
     declaredSymbols :: a -> Set Symbol
 
 instance (Ord l, Data l) => DeclaredSymbols (Environment, ModuleInfo l) where
-    declaredSymbols (env, i) = declaredSymbols (env, _moduleGlobals i, _module i)
+    declaredSymbols (env, i) = declaredSymbols (env, moduleGlobals env (_module i), _module i)
 
 instance (Ord l, Data l) => DeclaredSymbols (Environment, Global.Table, Module l) where
     declaredSymbols (env, table, m) = Set.unions (fmap (\d -> declaredSymbols (env, table, getModuleName m, d)) (getModuleDecls m))
@@ -40,7 +40,7 @@ class ExportedSymbols a where
     exportedSymbols :: a -> Set Symbol
 
 instance (Ord l, Data l) => ExportedSymbols (Environment, ModuleInfo l) where
-    exportedSymbols (env, i) = exportedSymbols (env, _moduleGlobals i, _module i)
+    exportedSymbols (env, i) = exportedSymbols (env, moduleGlobals env (_module i), _module i)
 
 instance (Ord l, Data l) => ExportedSymbols (Environment, Global.Table, Module l) where
     exportedSymbols (env, table, m) =
@@ -86,7 +86,7 @@ class ImportedSymbols a where
     importedSymbols :: a -> Set Symbol
 
 instance (Ord l, Data l) => ImportedSymbols (Environment, ModuleInfo l) where
-    importedSymbols (env, i) = importedSymbols (env, _moduleGlobals i, _module i)
+    importedSymbols (env, i) = importedSymbols (env, moduleGlobals env (_module i), _module i)
 
 instance (Ord l, Data l) => ImportedSymbols (Environment, Global.Table, Module l) where
     importedSymbols (env, table, m) = Set.unions (fmap (\i -> importedSymbols (env, table, i)) (getImports m))
@@ -116,7 +116,7 @@ class ReferencedSymbols a where
   referencedSymbols :: a -> Set Symbol
 
 instance ReferencedSymbols (Environment, ModuleInfo (Scoped SrcSpanInfo)) where
-    referencedSymbols (env, i) = referencedSymbols (env, _moduleGlobals i, _module i)
+    referencedSymbols (env, i) = referencedSymbols (env, moduleGlobals env (_module i), _module i)
 
 instance ReferencedSymbols (Environment, Global.Table, Module (Scoped SrcSpanInfo)) where
     referencedSymbols (env, table, m) =
