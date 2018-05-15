@@ -1,4 +1,4 @@
--- | Split a module in several ways based on the structure of the
+-- | Split a modle in several ways based on the structure of the
 -- "declares -> uses" relation on top level declarations.
 
 {-# LANGUAGE DeriveDataTypeable #-}
@@ -13,31 +13,31 @@ module Language.Haskell.Modules.Split
     ( bisect
     , withDecomposedModule
     , withUsesGraph
-    , DeclGroup(unDecs)
-    , declares
-    , declGroupName
     , cleanImports
     ) where
 
-import Debug.Trace (trace)
-import Control.Monad.State (State)
-import Data.Foldable as Foldable
-import Data.Generics
-import Data.Graph.Inductive (Gr, NodeMap)
-import Data.List (intercalate)
-import Data.Map as Map (keys, lookup, Map{-, member-})
-import Data.Maybe (fromMaybe, mapMaybe)
-import Data.Set as Set (difference, filter, empty, fromList, insert, intersection, map, member, null, Set, toList, union, unions)
-import Language.Haskell.Exts.SrcLoc
+import Debug.Trace ( trace )
+import Control.Monad.State ( State )
+import Data.Foldable as Foldable ( Foldable(foldl) )
+import Data.Generics ( Data )
+import Data.Graph.Inductive ( Gr, NodeMap )
+import Data.List ( intercalate )
+import Data.Map as Map ( keys, lookup, Map )
+import Data.Maybe ( fromMaybe )
+import Data.Set as Set
+    ( difference, filter, empty, fromList, insert, intersection, map, member, null, Set, toList, union, unions )
+import Language.Haskell.Exts.SrcLoc ( SrcSpanInfo )
 import Language.Haskell.Exts.Syntax
-import Language.Haskell.Modules.FGL
-import Language.Haskell.Modules.Info
-import Language.Haskell.Modules.Query
-import Language.Haskell.Modules.Utils
-import Language.Haskell.Names (Environment, Scoped(..), Symbol)
-import Language.Haskell.Names.Imports (importTable)
-import Language.Haskell.Names.ModuleSymbols (getTopDeclSymbols)
-import Language.Haskell.Names.SyntaxUtils -- (dropAnn, getImports, getModuleDecls)
+    ( QName(Qual), Name, ModuleHead(ModuleHead), Module(Module), ImportSpecList(ImportSpecList), ImportSpec(..),
+      ImportDecl(ImportDecl, importAs, importModule, importSpecs), ExportSpecList(ExportSpecList), ExportSpec, Decl )
+import Language.Haskell.Modules.FGL ( labNodes, reachable )
+import Language.Haskell.Modules.Graphs ( DeclGroup(unDecs), withUsesGraph )
+import Language.Haskell.Modules.Info ( ImportSpecWithDecl, ModuleInfo(ModuleInfo, _moduleComments, _module), moduleGlobals )
+import Language.Haskell.Modules.Query ( ReferencedNames(referencedNames), lookupNames, declares, exports, imports, uses )
+import Language.Haskell.Modules.Utils ( flatten, uncurry3 )
+import Language.Haskell.Names ( Environment, Scoped(..), Symbol )
+import Language.Haskell.Names.Imports ( importTable )
+import Language.Haskell.Names.SyntaxUtils ( dropAnn )
 
 -- | Split a graph into two components, those reachable from any of the
 -- nodes selected by the predicate, and the rest.  This is what you use
@@ -57,17 +57,6 @@ bisect p g = do
     where
       allNodes = Set.fromList (labNodes g)
       pNodes = Set.filter p allNodes
-
--- | A group of declarations that should not be split up - e.g. a
--- signature and the corresponding declaration(s).
-newtype DeclGroup l = DeclGroup {unDecs :: [Decl l]} deriving (Data, Eq, Ord, Show, Functor)
-
-declGroupName :: (Data l, Ord l) => Environment -> ModuleInfo l -> DeclGroup l -> Symbol
-declGroupName env i (DeclGroup ds) =
-    case Set.toList (foldr1 Set.intersection (fmap (declares env i) ds)) of
-      [s] -> s
-      [] -> error "declGroupName 1"
-      _ -> error "declGroupName 2"
 
 withDecomposedModule ::
     forall r l. (l ~ SrcSpanInfo)
@@ -107,53 +96,6 @@ partitionDeclsBy env decompose i = do
     (tmp :: [[DeclGroup (Scoped l)]]) <- decompose g
     return $ fmap (Set.fromList . concat . fmap unDecs) tmp
 
--- | Build a graph whose nodes are declaration groups and whose edges
--- are the "declares, uses" relation.  Each edge is labeled with a set
--- of symbols.
-withUsesGraph ::
-    forall l r. (l ~ SrcSpanInfo)
-    => Environment
-    -> ModuleInfo (Scoped l)
-    -> (Gr (DeclGroup (Scoped l)) (Set Symbol) -> State (NodeMap (DeclGroup (Scoped l))) r)
-    -> (r, NodeMap (DeclGroup (Scoped l)))
-withUsesGraph env i f =
-    runGraph (mkGraphM declGroups (concatMap (\a -> mapMaybe (edge a) declGroups) declGroups) >>= f)
-    where
-      declGroups :: [DeclGroup (Scoped l)]
-      declGroups = groupDecs env i (getModuleDecls (_module i))
-      -- Create edges from any declaration A to any other declaration
-      -- B such that A declares a symbol that B uses.
-      edge :: DeclGroup (Scoped l) -> DeclGroup (Scoped l) -> Maybe (DeclGroup (Scoped l), DeclGroup (Scoped l), Set Symbol)
-      edge a b = if Set.null common then Nothing else Just (a, b, common)
-          where common = Set.intersection
-                           (Set.unions (fmap (declares env i) (unDecs a)))
-                           (Set.unions (fmap (uses env i) (unDecs b)))
-
--- | Declarations come in sets - a signature, followed by one or more
--- Decls.
-groupDecs :: forall l. (Data l, Ord l, Show l) => Environment -> ModuleInfo (Scoped l) -> [Decl (Scoped l)] -> [DeclGroup (Scoped l)]
-groupDecs _ _ [] = error "makeDecs - invalid argument"
-groupDecs env i (d1 : ds1) =
-    -- With foldr we encounter the declarations in reverse, so the
-    -- signature ends up with the previous declaration.
-    snd $ foldl go (getTopDeclSymbols' env i d1, [DeclGroup [d1]]) ds1
-    where
-      go :: (Set Symbol, [DeclGroup (Scoped l)]) -> Decl (Scoped l) -> (Set Symbol, [DeclGroup (Scoped l)])
-      go (_, []) _ = (Set.empty, [])
-      go (_ss, DeclGroup ds : more) d@(TypeSig {}) =
-        -- Assuming signature comes first - is this a bad assumption?
-          (mempty, DeclGroup [d] : DeclGroup ds : more)
-      -- If the symbol set is empty we have seen a signature, this must(?)
-      -- be the corresponding declaration.
-      go (ss, DeclGroup ds : more) d | Set.null ss =
-          let ss' = getTopDeclSymbols' env i d in
-          (Set.union ss ss', DeclGroup (ds ++ [d]) : more)
-      go (ss, DeclGroup ds : more) d =
-          let ss' = getTopDeclSymbols' env i d in
-          if Set.null (Set.intersection ss ss')
-          then (ss', DeclGroup [d] : DeclGroup ds : more)
-          else (Set.union ss ss', DeclGroup (ds ++ [d]) : more)
-
 -- | Return the set of ExportSpec that are not supplied by the set of
 -- declarations.
 exportsToKeep ::
@@ -183,7 +125,7 @@ importsToKeep env i@(ModuleInfo {_module = Module _ _ _ is _}) ds es =
   where
     -- We need to keep any import if it is either used or re-exported
     syms = Set.union
-             (flatten (Set.map (uses env i) ds))
+             (flatten (Set.map (uses (moduleGlobals env (_module i))) ds))
              (flatten (Set.map (exports env i) es))
              -- (declares i ds) -- All the symbols declared in this module
              -- (error "importsToKeep" :: Set Symbol)
@@ -216,7 +158,7 @@ cleanImports env i@(ModuleInfo {_module = m@(Module _ _ _ is _)}) =
     flip Set.member (foldl goDecl Set.empty is)
     where
       refs :: Set Symbol
-      refs = referencedSymbols (env, m)
+      refs = lookupNames (referencedNames m) (moduleGlobals env m)
       -- I *think* the qnames here are the same as the ones I compute
       -- below for each import spec.  Any import specs whose qname
       -- maps to symbols that are not in the set refs should be
@@ -270,20 +212,3 @@ t3 n x = trace ("\nIVar\n qname: " ++ show n ++ "\n  syms: " ++ show x) x
 t4 n x = trace ("\nIAbs\n qname: " ++ show n ++ "\n  syms: " ++ show x) x
 t5 x = {-trace ("\nispec: " ++ show x)-} x
 t6 n rs x = trace ("\nt6 " ++ show n ++ "\n refs:\n" ++ intercalate "\n    " (fmap show (Set.toList rs))) x
-
--- | Symbols declared by a declaration.  (Should take a single element, not a set.)
-declares :: (Data l, Ord l) => Environment -> ModuleInfo l -> Decl l -> Set Symbol
-declares env i d = declaredSymbols (env, _module i, d)
-
-exports :: forall l. (Data l, Ord l, Show l) => Environment -> ModuleInfo (Scoped l) -> ExportSpec (Scoped l) -> Set Symbol
-exports env i espec = exportedSymbols (env, _module i, espec)
-
-imports :: forall l. (Data l, Ord l, Show l) => Environment -> ModuleInfo (Scoped l) -> ModuleName (Scoped l) -> Maybe (ModuleName (Scoped l)) -> ImportSpec (Scoped l) -> Set Symbol
-imports env i mname aname ispec = importedSymbols (env, _module i, mname, aname, ispec)
-
--- | Symbols used in a declaration - a superset of declares.
-uses :: Environment -> ModuleInfo (Scoped SrcSpanInfo) -> Decl (Scoped SrcSpanInfo) -> Set Symbol
-uses env i b = referencedSymbols (env, _module i, b)
-
-getTopDeclSymbols' :: (Data l, Eq l) => Environment -> ModuleInfo l -> Decl l -> Set Symbol
-getTopDeclSymbols' env i d = Set.fromList $ getTopDeclSymbols (moduleGlobals env (_module i)) (getModuleName (_module i)) d

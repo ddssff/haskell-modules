@@ -16,14 +16,12 @@ import Language.Haskell.Interpreter (runInterpreter, getModuleExports{-, Interpr
 --import Language.Haskell.Modules.CPP ({-ghcOptions,-} GHCOpts, hsSourceDirs)
 import Language.Haskell.Modules.Danger (dangerous)
 import Language.Haskell.Modules.FGL (components)
-import Language.Haskell.Modules.Imports
-  (buildEnvironmentForNames, buildEnvironmentForSource)
 import Language.Haskell.Modules.Info (ModuleInfo(..))
 import Language.Haskell.Modules.IO (loadModules)
 import Language.Haskell.Modules.Orphans ()
 import Language.Haskell.Modules.Parse (parseModule)
 --import Language.Haskell.Modules.Query (importedModules)
-import Language.Haskell.Modules.Reify (findModuleSymbols)
+import Language.Haskell.Modules.Reify (buildEnvironmentForNames, buildEnvironmentForSource, findModuleSymbols)
 --import Language.Haskell.Modules.Utils (setFromList)
 import Language.Haskell.Names (Environment, loadBase, ppSymbol, Scoped(..), Symbol(..))
 import Language.Haskell.Names.SyntaxUtils (dropAnn, getModuleName)
@@ -73,6 +71,7 @@ import qualified Language.Haskell.Exts.SrcLoc
 import qualified Language.Haskell.Exts.Syntax
 import qualified Language.Haskell.Interpreter
 import qualified Language.Haskell.Names
+import qualified Language.Haskell.Names.Exports
 import qualified Language.Haskell.Names.GlobalSymbolTable
 import qualified Language.Haskell.Names.Imports
 import qualified Language.Haskell.Names.ModuleSymbols
@@ -136,6 +135,7 @@ test2 = TestCase (assertEqual "buildEnvironment 2"
                                    (ModuleName () "Language.Haskell.Exts.Syntax",491),
                                    (ModuleName () "Language.Haskell.Interpreter",298),
                                    (ModuleName () "Language.Haskell.Names",52),
+                                   (ModuleName () "Language.Haskell.Names.Exports",2),
                                    (ModuleName () "Language.Haskell.Names.GlobalSymbolTable",13),
                                    (ModuleName () "Language.Haskell.Names.Imports",2),
                                    (ModuleName () "Language.Haskell.Names.ModuleSymbols",3),
@@ -157,8 +157,21 @@ test2 = TestCase (assertEqual "buildEnvironment 2"
 env2 :: Environment
 env2 =
     $(do let paths = fmap ("src/Language/Haskell/Modules" </>)
-                       ["Utils.hs", "SrcLoc.hs", "Reify.hs", "Orphans.hs", "Info.hs", "FGL.hs", "Split.hs",
-                        "CPP.hs", "Parse.hs", "Query.hs", "Render.hs", "IO.hs", "Danger.hs", "Imports.hs"]
+                       ["Clean.hs",
+                        "CPP.hs",
+                        "Danger.hs",
+                        "FGL.hs",
+                        "Graphs.hs",
+                        "Info.hs",
+                        "IO.hs",
+                        "Orphans.hs",
+                        "Parse.hs",
+                        "Query.hs",
+                        "Reify.hs",
+                        "Render.hs",
+                        "Split.hs",
+                        "SrcLoc.hs",
+                        "Utils.hs"]
          buildEnvironmentForSource 0 def dangerous paths)
 {-
          (mods, env) <-

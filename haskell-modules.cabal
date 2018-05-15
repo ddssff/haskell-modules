@@ -41,7 +41,7 @@ Library
     Language.Haskell.Modules.CPP
     Language.Haskell.Modules.Danger
     Language.Haskell.Modules.FGL
-    Language.Haskell.Modules.Imports
+    Language.Haskell.Modules.Graphs
     Language.Haskell.Modules.Info
     Language.Haskell.Modules.IO
     Language.Haskell.Modules.Parse

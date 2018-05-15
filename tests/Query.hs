@@ -6,20 +6,21 @@ module Query where
 import Control.Monad.State (evalStateT, runStateT)
 import Data.Default (def)
 import Data.Graph.Inductive (grev)
-import Data.Set as Set (difference, empty, filter, fromList, union, unions)
-import Language.Haskell.Exts (Name(Ident, Symbol))
+import Data.Set as Set (difference, filter, fromList, unions)
+import Language.Haskell.Exts (Name(..))
 import Language.Haskell.Exts.Syntax (ModuleName(..))
 import Language.Haskell.Names (ppSymbol, Symbol(..))
 import Language.Haskell.TH.Instances ()
 import Prelude hiding (lookup)
 -- import Language.Haskell.Modules.Clean (cleanImports)
 import Language.Haskell.Modules.FGL (components)
+import Language.Haskell.Modules.Graphs (DeclGroup(unDecs))
 import Language.Haskell.Modules.Info (ModuleInfo(..))
 import Language.Haskell.Modules.Orphans ()
 import Language.Haskell.Modules.Parse (parseAndAnnotateModules)
-import Language.Haskell.Modules.Query (declaredSymbols, exportedSymbols, importedSymbols, referencedSymbols)
+import Language.Haskell.Modules.Query (declares, declaredSymbols, exportedSymbols', importedSymbols, referencedSymbols)
 import Language.Haskell.Modules.Render (renderModule)
-import Language.Haskell.Modules.Split (bisect, declares, DeclGroup(unDecs), withDecomposedModule, cleanImports)
+import Language.Haskell.Modules.Split (bisect, withDecomposedModule, cleanImports)
 import System.IO (readFile, writeFile)
 import Test.HUnit hiding (path)
 
@@ -84,7 +85,7 @@ test2 =
                                  Value {symbolModule = ModuleName () "Language.Haskell.Modules.FGL", symbolName = Ident () "runGraph"},
                                  Value {symbolModule = ModuleName () "Language.Haskell.Modules.FGL", symbolName = Ident () "runGraphT"},
                                  Value {symbolModule = ModuleName () "Language.Haskell.Modules.FGL", symbolName = Ident () "tests"}])
-                  (exportedSymbols (env', i))
+                  (exportedSymbols' (env', i))
 
 test3 :: Test
 test3 =
@@ -149,7 +150,7 @@ test4 =
                     Value {symbolModule = ModuleName () "Language.Haskell.Modules.FGL", symbolName = Ident () "evalGraph'"},
                     Value {symbolModule = ModuleName () "Language.Haskell.Modules.FGL", symbolName = Ident () "foldrM'"},
                     Value {symbolModule = ModuleName () "Language.Haskell.Modules.FGL", symbolName = Ident () "labEdgesM'"}])
-                  (Set.difference (declaredSymbols (env', i)) (exportedSymbols (env', i)))
+                  (Set.difference (declaredSymbols (env', i)) (exportedSymbols' (env', i)))
 
 test5 :: Test
 test5 =
@@ -158,18 +159,31 @@ test5 =
                 assertEqual "referenced 1"
                   (fromList [Value {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "initRenderInfo"},
                              Value {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "keep"},
+                             -- To discover that keep', keep'', keepV, skipV, etc are defined but
+                             -- not used we need to build a graph of the "referenced" relation on
+                             -- declarations and exports, and any declaration that can't reach an
+                             -- export is unused.
+                             Value {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "keep'"},
+                             Value {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "keep''"},
+                             Value {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "keepV"},
                              Value {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "labelled"},
+                             Value {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "prefixed"},
                              Value {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "renderModule"},
                              Value {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "sinf"},
                              Value {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "skip"},
+                             Value {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "skipV"},
                              Value {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "span"},
                              Value {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "spanEnd"},
                              Value {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "spanStart"},
+                             Value {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "verbosely"},
+                             Selector {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "_label", typeName = Ident () "RenderInfo", constructors = [Ident () "RenderInfo"]},
+                             Selector {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "_moduleInfo", typeName = Ident () "RenderInfo", constructors = [Ident () "RenderInfo"]},
+                             Selector {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "_prefix", typeName = Ident () "RenderInfo", constructors = [Ident () "RenderInfo"]},
                              Selector {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "_verbosity", typeName = Ident () "RenderInfo", constructors = [Ident () "RenderInfo"]},
                              Constructor {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "RenderInfo", typeName = Ident () "RenderInfo"},
                              Data {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "RenderInfo"}])
                   (Set.filter (\ x -> symbolModule x == ModuleName () "Language.Haskell.Modules.Render")
-                    (referencedSymbols (env', _module i)))
+                    (referencedSymbols env' (_module i)))
 
 test5b :: Test
 test5b =
@@ -177,11 +191,16 @@ test5b =
                 ([i], env') <- readFile path >>= \text -> runStateT (parseAndAnnotateModules def [(path, text)]) env2
                 assertEqual "referenced 2"
                   (fromList [Value {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "moduleGlobals"},
+                             Selector {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "_module", typeName = Ident () "ModuleInfo", constructors = [Ident () "ModuleInfo"]},
+                             Selector {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "_moduleComments", typeName = Ident () "ModuleInfo", constructors = [Ident () "ModuleInfo"]},
+                             Selector {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "_modulePath", typeName = Ident () "ModuleInfo", constructors = [Ident () "ModuleInfo"]},
+                             Selector {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "_moduleSpan", typeName = Ident () "ModuleInfo", constructors = [Ident () "ModuleInfo"]},
+                             Selector {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "_moduleText", typeName = Ident () "ModuleInfo", constructors = [Ident () "ModuleInfo"]},
                              Constructor {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "ModuleInfo", typeName = Ident () "ModuleInfo"},
                              Type {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "ImportSpecWithDecl"},
                              Data {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "ModuleInfo"}])
                   (Set.filter (\ x -> symbolModule x == ModuleName () "Language.Haskell.Modules.Info")
-                    (referencedSymbols (env', _module i)))
+                    (referencedSymbols env' (_module i)))
 
 test5c :: Test
 test5c =
@@ -218,7 +237,7 @@ test6 =
                              Selector {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "_moduleInfo", typeName = Ident () "RenderInfo", constructors = [Ident () "RenderInfo"]},
                              Selector {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "_prefix", typeName = Ident () "RenderInfo", constructors = [Ident () "RenderInfo"]}
                             ])
-                  (Set.difference (declaredSymbols (env', i)) (referencedSymbols (env', i)))
+                  (Set.difference (declaredSymbols (env', i)) (referencedSymbols env' (_module i)))
 
 demo1 = do
   [i] <- let path = "src/Langauge/Haskell/Modules/FGL.hs" in readFile path >>= \text -> evalStateT (parseAndAnnotateModules def [(path, text)]) env2
