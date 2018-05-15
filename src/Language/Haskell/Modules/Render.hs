@@ -112,12 +112,12 @@ renderModule i@(ModuleInfo {_module = Module _l h ps is ds, _moduleComments = _c
     scanImportSpec idecl prev ispec =
         case selectedImports (idecl, t10 ispec) of
           True -> do
-            (if prev then keep else {-skip-} keepV "-") (spanStart ispec)
-            keepV "+" (spanEnd ispec)
+            (if prev then keep else skip {-keepV "-"-}) (spanStart ispec)
+            keep {-keepV "+"-} (spanEnd ispec)
             return True
           False -> do
-            (if prev then keep else {-skip-} keepV "-") (spanStart ispec)
-            keepV "-" {-skip-} (spanEnd ispec)
+            (if prev then keep else skip {-keepV "-"-}) (spanStart ispec)
+            skip {-keepV "-"-} (spanEnd ispec)
             return False
     t7 x = {-trace ("\nt7: " ++ show x)-} x
     t8 x = {-trace ("\nt8: " ++ show x)-} x

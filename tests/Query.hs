@@ -6,8 +6,8 @@ module Query where
 import Control.Monad.State (evalStateT, runStateT)
 import Data.Default (def)
 import Data.Graph.Inductive (grev)
-import Data.Set as Set (difference, filter, fromList, unions)
-import Language.Haskell.Exts (Name(..))
+import Data.Set as Set (difference, filter, fromList, map, union, unions)
+import Language.Haskell.Exts (Name(..), QName(..))
 import Language.Haskell.Exts.Syntax (ModuleName(..))
 import Language.Haskell.Names (ppSymbol, Symbol(..))
 import Language.Haskell.TH.Instances ()
@@ -18,9 +18,13 @@ import Language.Haskell.Modules.Graphs (DeclGroup(unDecs))
 import Language.Haskell.Modules.Info (ModuleInfo(..))
 import Language.Haskell.Modules.Orphans ()
 import Language.Haskell.Modules.Parse (parseAndAnnotateModules)
-import Language.Haskell.Modules.Query (declares, declaredSymbols, exportedSymbols', importedSymbols, referencedSymbols)
+import Language.Haskell.Modules.Query (declares, declaredSymbols, exportedSymbols', importedSymbols, referencedNames, referencedSymbols)
 import Language.Haskell.Modules.Render (renderModule)
 import Language.Haskell.Modules.Split (bisect, withDecomposedModule, cleanImports)
+import Language.Haskell.Names.Exports (exportedSymbols)
+import Language.Haskell.Names.Imports (importTable)
+import Language.Haskell.Names.ModuleSymbols (getTopDeclSymbols, moduleTable)
+import Language.Haskell.Names.SyntaxUtils (dropAnn)
 import System.IO (readFile, writeFile)
 import Test.HUnit hiding (path)
 
@@ -185,23 +189,6 @@ test5 =
                   (Set.filter (\ x -> symbolModule x == ModuleName () "Language.Haskell.Modules.Render")
                     (referencedSymbols env' (_module i)))
 
-test5b :: Test
-test5b =
-  TestCase $ do let path = "src/Language/Haskell/Modules/Info.hs"
-                ([i], env') <- readFile path >>= \text -> runStateT (parseAndAnnotateModules def [(path, text)]) env2
-                assertEqual "referenced 2"
-                  (fromList [Value {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "moduleGlobals"},
-                             Selector {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "_module", typeName = Ident () "ModuleInfo", constructors = [Ident () "ModuleInfo"]},
-                             Selector {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "_moduleComments", typeName = Ident () "ModuleInfo", constructors = [Ident () "ModuleInfo"]},
-                             Selector {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "_modulePath", typeName = Ident () "ModuleInfo", constructors = [Ident () "ModuleInfo"]},
-                             Selector {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "_moduleSpan", typeName = Ident () "ModuleInfo", constructors = [Ident () "ModuleInfo"]},
-                             Selector {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "_moduleText", typeName = Ident () "ModuleInfo", constructors = [Ident () "ModuleInfo"]},
-                             Constructor {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "ModuleInfo", typeName = Ident () "ModuleInfo"},
-                             Type {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "ImportSpecWithDecl"},
-                             Data {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "ModuleInfo"}])
-                  (Set.filter (\ x -> symbolModule x == ModuleName () "Language.Haskell.Modules.Info")
-                    (referencedSymbols env' (_module i)))
-
 test5c :: Test
 test5c =
   TestCase $ do let path = "src/Language/Haskell/Modules/Info.hs"
@@ -216,8 +203,135 @@ test5c =
                              Constructor {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "ModuleInfo", typeName = Ident () "ModuleInfo"},
                              Type {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "ImportSpecWithDecl"},
                              Data {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "ModuleInfo"}])
-                  (Set.filter (\ x -> symbolModule x == ModuleName () "Language.Haskell.Modules.Info")
-                    (declaredSymbols (env', _module i)))
+                  (declaredSymbols (env', _module i))
+
+test5d :: Test
+test5d =
+  TestCase $ do let path = "src/Language/Haskell/Modules/Info.hs"
+                ([i], _env) <- readFile path >>= \text -> runStateT (parseAndAnnotateModules def [(path, text)]) env2
+                assertEqual "referenced 3"
+                  (fromList [Qual () (ModuleName () "Global") (Ident () "Table"),
+                             UnQual () (Ident () "Comment"),
+                             UnQual () (Ident () "Data"),
+                             UnQual () (Ident () "Environment"),
+                             UnQual () (Ident () "FilePath"),
+                             UnQual () (Ident () "Functor"),
+                             UnQual () (Ident () "ImportDecl"),
+                             UnQual () (Ident () "ImportSpec"),
+                             UnQual () (Ident () "ImportSpecWithDecl"),
+                             UnQual () (Ident () "Maybe"),
+                             UnQual () (Ident () "Module"),
+                             UnQual () (Ident () "ModuleInfo"),
+                             UnQual () (Ident () "Show"),
+                             UnQual () (Ident () "SrcSpanInfo"),
+                             UnQual () (Ident () "String"),
+                             UnQual () (Ident () "Table"),
+                             UnQual () (Ident () "Typeable"),
+                             UnQual () (Ident () "_module"),
+                             UnQual () (Ident () "_moduleComments"),
+                             UnQual () (Ident () "_modulePath"),
+                             UnQual () (Ident () "_moduleSpan"),
+                             UnQual () (Ident () "_moduleText"),
+                             UnQual () (Ident () "deriveLift"),
+                             UnQual () (Ident () "dropAnn"),
+                             UnQual () (Ident () "env"),
+                             UnQual () (Ident () "importTable"),
+                             UnQual () (Ident () "l"),
+                             UnQual () (Ident () "m"),
+                             UnQual () (Ident () "moduleGlobals"),
+                             UnQual () (Ident () "moduleTable")])
+                  (Set.map dropAnn (referencedNames (_module i)))
+
+test5b :: Test
+test5b =
+  TestCase $ do let path = "src/Language/Haskell/Modules/Info.hs"
+                ([i], env') <- readFile path >>= \text -> runStateT (parseAndAnnotateModules def [(path, text)]) env2
+                assertEqual "referenced 2"
+                  (fromList [Value {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "moduleGlobals"},
+                             Value {symbolModule = ModuleName () "Language.Haskell.Names.Imports", symbolName = Ident () "importTable"},
+                             Value {symbolModule = ModuleName () "Language.Haskell.Names.ModuleSymbols", symbolName = Ident () "moduleTable"},
+                             Value {symbolModule = ModuleName () "Language.Haskell.Names.SyntaxUtils", symbolName = Ident () "dropAnn"},
+                             Value {symbolModule = ModuleName () "Language.Haskell.TH.Lift", symbolName = Ident () "deriveLift"},
+                             Selector {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "_module", typeName = Ident () "ModuleInfo", constructors = [Ident () "ModuleInfo"]},
+                             Selector {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "_moduleComments", typeName = Ident () "ModuleInfo", constructors = [Ident () "ModuleInfo"]},
+                             Selector {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "_modulePath", typeName = Ident () "ModuleInfo", constructors = [Ident () "ModuleInfo"]},
+                             Selector {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "_moduleSpan", typeName = Ident () "ModuleInfo", constructors = [Ident () "ModuleInfo"]},
+                             Selector {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "_moduleText", typeName = Ident () "ModuleInfo", constructors = [Ident () "ModuleInfo"]},
+                             Constructor {symbolModule = ModuleName () "Language.Haskell.Exts.Comments", symbolName = Ident () "Comment", typeName = Ident () "Comment"},
+                             Constructor {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "ModuleInfo", typeName = Ident () "ModuleInfo"},
+                             Type {symbolModule = ModuleName () "GHC.Base", symbolName = Ident () "String"},
+                             Type {symbolModule = ModuleName () "GHC.IO", symbolName = Ident () "FilePath"},
+                             Type {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "ImportSpecWithDecl"},
+                             Type {symbolModule = ModuleName () "Language.Haskell.Names.GlobalSymbolTable", symbolName = Ident () "Table"},
+                             Type {symbolModule = ModuleName () "Language.Haskell.Names.Types", symbolName = Ident () "Environment"},
+                             Data {symbolModule = ModuleName () "GHC.Base", symbolName = Ident () "Maybe"},
+                             Data {symbolModule = ModuleName () "Language.Haskell.Exts.Comments", symbolName = Ident () "Comment"},
+                             Data {symbolModule = ModuleName () "Language.Haskell.Exts.SrcLoc", symbolName = Ident () "SrcSpanInfo"},
+                             Data {symbolModule = ModuleName () "Language.Haskell.Exts.Syntax", symbolName = Ident () "ImportDecl"},
+                             Data {symbolModule = ModuleName () "Language.Haskell.Exts.Syntax", symbolName = Ident () "ImportSpec"},
+                             Data {symbolModule = ModuleName () "Language.Haskell.Exts.Syntax", symbolName = Ident () "Module"},
+                             Data {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "ModuleInfo"},
+                             Class {symbolModule = ModuleName () "Data.Data", symbolName = Ident () "Data"},
+                             Class {symbolModule = ModuleName () "Data.Typeable.Internal", symbolName = Ident () "Typeable"},
+                             Class {symbolModule = ModuleName () "GHC.Base", symbolName = Ident () "Functor"},
+                             Class {symbolModule = ModuleName () "GHC.Show", symbolName = Ident () "Show"}])
+                  (referencedSymbols env' (_module i))
+
+test5e :: Test
+test5e =
+  TestCase $ do let path = "src/Language/Haskell/Modules/Info.hs"
+                ([i], env') <- readFile path >>= \text -> runStateT (parseAndAnnotateModules def [(path, text)]) env2
+                let m = _module i
+                    m' = dropAnn m
+                assertEqual "declared 2"
+                  (fromList [Value {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "moduleGlobals"},
+                             Selector {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "_module", typeName = Ident () "ModuleInfo", constructors = [Ident () "ModuleInfo"]},
+                             Selector {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "_moduleComments", typeName = Ident () "ModuleInfo", constructors = [Ident () "ModuleInfo"]},
+                             Selector {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "_modulePath", typeName = Ident () "ModuleInfo", constructors = [Ident () "ModuleInfo"]},
+                             Selector {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "_moduleSpan", typeName = Ident () "ModuleInfo", constructors = [Ident () "ModuleInfo"]},
+                             Selector {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "_moduleText", typeName = Ident () "ModuleInfo", constructors = [Ident () "ModuleInfo"]},
+                             Constructor {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "ModuleInfo", typeName = Ident () "ModuleInfo"},
+                             Type {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "ImportSpecWithDecl"},
+                             Data {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "ModuleInfo"}])
+                  (Set.fromList (exportedSymbols (moduleTable (importTable env' m) m') m))
+
+test5f :: Test
+test5f =
+  TestCase $ do let path = "src/Language/Haskell/Modules/Info.hs"
+                ([i], env') <- readFile path >>= \text -> runStateT (parseAndAnnotateModules def [(path, text)]) env2
+                let m = _module i
+                    m' = dropAnn m
+                assertEqual "imported 2"
+                  (fromList [Value {symbolModule = ModuleName () "Data.OldList", symbolName = Ident () "nub"}])
+                  (importedSymbols (env', _module i))
+
+test5g :: Test
+test5g =
+  TestCase $ do let path = "src/Language/Haskell/Modules/Info.hs"
+                ([i], env') <- readFile path >>= \text -> runStateT (parseAndAnnotateModules def [(path, text)]) env2
+                let m = _module i
+                    m' = dropAnn m
+                assertEqual "redundant 1"
+                  (fromList [Value {symbolModule = ModuleName () "Data.OldList", symbolName = Ident () "nub"},
+                             Value {symbolModule = ModuleName () "Language.Haskell.Names.Imports", symbolName = Ident () "importTable"},
+                             Value {symbolModule = ModuleName () "Language.Haskell.Names.ModuleSymbols", symbolName = Ident () "moduleTable"},
+                             Value {symbolModule = ModuleName () "Language.Haskell.Names.SyntaxUtils", symbolName = Ident () "dropAnn"},
+                             Value {symbolModule = ModuleName () "Language.Haskell.TH.Lift", symbolName = Ident () "deriveLift"},
+                             Constructor {symbolModule = ModuleName () "Language.Haskell.Exts.Comments", symbolName = Ident () "Comment", typeName = Ident () "Comment"},
+                             Type {symbolModule = ModuleName () "Language.Haskell.Names.GlobalSymbolTable", symbolName = Ident () "Table"},
+                             Type {symbolModule = ModuleName () "Language.Haskell.Names.Types", symbolName = Ident () "Environment"},
+                             Data {symbolModule = ModuleName () "Language.Haskell.Exts.Comments", symbolName = Ident () "Comment"},
+                             Data {symbolModule = ModuleName () "Language.Haskell.Exts.SrcLoc", symbolName = Ident () "SrcSpanInfo"},
+                             Data {symbolModule = ModuleName () "Language.Haskell.Exts.Syntax", symbolName = Ident () "ImportDecl"},
+                             Data {symbolModule = ModuleName () "Language.Haskell.Exts.Syntax", symbolName = Ident () "ImportSpec"},
+                             Data {symbolModule = ModuleName () "Language.Haskell.Exts.Syntax", symbolName = Ident () "Module"},
+                             Class {symbolModule = ModuleName () "Data.Data", symbolName = Ident () "Data"},
+                             Class {symbolModule = ModuleName () "Data.Typeable.Internal", symbolName = Ident () "Typeable"}])
+                  (Set.difference
+                     (importedSymbols (env', _module i))
+                     (Set.union
+                       (referencedSymbols env' (_module i))
+                       (Set.fromList (exportedSymbols (moduleTable (importTable env' m) m') m))))
 
 test6 :: Test
 test6 =

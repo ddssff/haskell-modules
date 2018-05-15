@@ -1,11 +1,12 @@
 -- | Split a modle in several ways based on the structure of the
 -- "declares -> uses" relation on top level declarations.
 
-{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE CPP, DeriveDataTypeable #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS -Wall #-}
 
@@ -24,6 +25,7 @@ import Data.Graph.Inductive ( Gr, NodeMap )
 import Data.List ( intercalate )
 import Data.Map as Map ( keys, lookup, Map )
 import Data.Maybe ( fromMaybe )
+import Data.Monoid ((<>))
 import Data.Set as Set
     ( difference, filter, empty, fromList, insert, intersection, map, member, null, Set, toList, union, unions )
 import Language.Haskell.Exts.SrcLoc ( SrcSpanInfo )
@@ -33,11 +35,13 @@ import Language.Haskell.Exts.Syntax
 import Language.Haskell.Modules.FGL ( labNodes, reachable )
 import Language.Haskell.Modules.Graphs ( DeclGroup(unDecs), withUsesGraph )
 import Language.Haskell.Modules.Info ( ImportSpecWithDecl, ModuleInfo(ModuleInfo, _moduleComments, _module), moduleGlobals )
-import Language.Haskell.Modules.Query ( ReferencedNames(referencedNames), lookupNames, declares, exports, imports, uses )
-import Language.Haskell.Modules.Utils ( flatten, uncurry3 )
+import Language.Haskell.Modules.Query (importedSymbols, ReferencedNames(referencedNames), referencedSymbols, lookupNames, declares, exports, imports, uses )
+import Language.Haskell.Modules.Utils ( flatten, gFind, uncurry3 )
 import Language.Haskell.Names ( Environment, Scoped(..), Symbol )
+import Language.Haskell.Names.Exports (exportedSymbols)
 import Language.Haskell.Names.Imports ( importTable )
-import Language.Haskell.Names.SyntaxUtils ( dropAnn )
+import Language.Haskell.Names.ModuleSymbols (getTopDeclSymbols, moduleTable)
+import Language.Haskell.Names.SyntaxUtils (dropAnn, getModuleDecls, getExportSpecList)
 
 -- | Split a graph into two components, those reachable from any of the
 -- nodes selected by the predicate, and the rest.  This is what you use
@@ -148,27 +152,37 @@ importsToKeep env m@(Module _ _ _ is _) ds es =
         else r
 importsToKeep _ _ _ _ = error "importsToKeep"
 
+-- | Classify whether an (ImportDecl, ImportSpec) pair is redundant.  It is
+-- redundant none of the names in the module's declarations or exports
+-- refers to the symbols it imports.
 cleanImports ::
     forall l. (l ~ Scoped SrcSpanInfo)
     => Environment
     -> Module l
     -> ImportSpecWithDecl l
     -> Bool
-cleanImports env m@(Module _ _ _ is _) =
-    flip Set.member (foldl goDecl Set.empty is)
+cleanImports env m@(Module _ _ _ is ds) =
+    flip Set.member (Set.filter cleaned allSpecs)
     where
-      refs :: Set Symbol
-      refs = lookupNames (referencedNames m) (moduleGlobals env m)
-      -- I *think* the qnames here are the same as the ones I compute
-      -- below for each import spec.  Any import specs whose qname
-      -- maps to symbols that are not in the set refs should be
-      -- dropped.
-      table :: Map (QName ()) [Symbol]
-      table = importTable env m
+      cleaned :: ImportSpecWithDecl l -> Bool
+      cleaned (idecl, ispec) =
+          not (Set.null (Set.intersection used (importedSymbols (env, m, idecl, ispec))))
+      used = (Set.union
+               (referencedSymbols env m)
+               (Set.fromList (exportedSymbols (moduleTable (importTable env m) (dropAnn m)) m)))
+
+      allSpecs :: Set (ImportSpecWithDecl l)
+      allSpecs = Set.fromList (concatMap ispecs idecls)
+      ispecs :: ImportDecl l -> [(ImportDecl l, ImportSpec l)]
+      ispecs d = fmap (d,) (gFind d :: [ImportSpec l])
+      idecls :: [ImportDecl l]
+      idecls = gFind is :: [ImportDecl l]
+#if 0
       goDecl :: Set (ImportSpecWithDecl l) -> ImportDecl l -> Set (ImportSpecWithDecl l)
       goDecl r idecl@(ImportDecl {importModule = mname,
                                   importAs = aname,
-                                  importSpecs = Just (ImportSpecList _ False isl)}) = foldl (\r s -> goSpec idecl (\name -> Qual () (dropAnn (fromMaybe mname aname)) (dropAnn name)) r (t5 s)) r isl
+                                  importSpecs = Just (ImportSpecList _ False isl)}) =
+        foldl (\r s -> goSpec idecl (\name -> Qual () (dropAnn (fromMaybe mname aname)) (dropAnn name)) r s) r isl
       goDecl r (ImportDecl {importSpecs = Just (ImportSpecList _ _hiding@True _isl)}) = r
       goDecl r (ImportDecl {importSpecs = Nothing}) = r
       goSpec ::
@@ -204,6 +218,19 @@ cleanImports env m@(Module _ _ _ is _) =
         -- if not (Set.null (Set.intersection (imports env i (importModule idecl) (importAs idecl) ispec) syms))
         -- then Set.insert (idecl, ispec) r
         -- else r
+
+
+
+      -- Every symbol referenced in the module's declarations or imports
+      refs :: Set Symbol
+      refs = lookupNames (referencedNames (getModuleDecls m) <> referencedNames (getExportSpecList m)) (moduleGlobals env m)
+      -- I *think* the qnames here are the same as the ones I compute
+      -- below for each import spec.  Any import specs whose qname
+      -- maps to symbols that are not in the set refs should be
+      -- dropped.
+      table :: Map (QName ()) [Symbol]
+      table = importTable env m
+#endif
 cleanImports _ _ = const True
 
 t1 n x = trace ("\nIThing\n qname: " ++ show n ++ "\n  syms: " ++ show x) x

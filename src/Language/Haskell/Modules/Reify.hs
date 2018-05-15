@@ -171,11 +171,11 @@ infoToSymbols defmod syms (FamilyI (DataFamilyD tname _ _) insts) =
        {symbolModule = thNameToModName defmod tname,
         symbolName = thNameToExtsName syms tname,
         associate = findAssociateName insts}]
-infoToSymbols _ _ i@(FamilyI _ _) = error $ "infoToSymbols - " ++ show i
-infoToSymbols _ _ i@(ClassI _ _) = error $ "infoToSymbols - " ++ show i
-infoToSymbols _ _ i@(TyConI _) = error $ "infoToSymbols - " ++ show i
-infoToSymbols _ _ i@(PrimTyConI _ _ _) = error $ "infoToSymbols - " ++ show i
-infoToSymbols _ _ i@(TyVarI _ _) = error $ "infoToSymbols - " ++ show i
+infoToSymbols _ _ i@(FamilyI _ _) = error $ "unimplemented - infoToSymbols " ++ show i
+infoToSymbols _ _ i@(ClassI _ _) = error $ "unimplemented - infoToSymbols " ++ show i
+infoToSymbols _ _ i@(TyConI _) = error $ "unimplemented - infoToSymbols " ++ show i
+infoToSymbols _ _ i@(PrimTyConI _ _ _) = error $ "unimplemented - infoToSymbols " ++ show i
+infoToSymbols _ _ i@(TyVarI _ _) = error $ "unimplemented - infoToSymbols " ++ show i
 
 findAssociateName :: [Dec] -> Maybe (Exts.Name ())
 findAssociateName _ = Nothing

@@ -101,6 +101,15 @@ instance (Ord l, Data l) => ImportedSymbols (Environment, Module l, ImportDecl l
         -- All the symbols in a module
         exportedSymbols' (env, mname)
 
+instance (l ~ Scoped SrcSpanInfo) => ImportedSymbols (Environment, Module l, ImportDecl l, ImportSpec l) where
+    importedSymbols (env, m, idecl, IVar _l name) = symbols (ann name)
+    importedSymbols (env, m, idecl, IAbs _l _space name) = symbols (ann name)
+    importedSymbols (env, m, idecl, IThingAll _l name) = symbols (ann name)
+    importedSymbols (env, m, idecl, IThingWith _l name _cnames) = symbols (ann name)
+
+symbols :: Scoped l -> Set Symbol
+symbols x = Set.fromList (gFind (fmap (const ()) x) :: [Symbol])
+
 instance ImportedSymbols (Environment, Module l, ModuleName l, Maybe (ModuleName l), ImportSpec l) where
     importedSymbols (env, m, mname, aname, IVar _l name) =
         Set.fromList (lookupName (toQName (fromMaybe mname aname) name) (moduleGlobals env m))
@@ -115,11 +124,14 @@ toQName :: ModuleName l -> Name l -> QName ()
 toQName mname name = Qual () (dropAnn mname) (dropAnn name)
 
 -- | Return the set of 'QName' used in an object such as a declaration.
--- One then builds a symbol table for the and looks these up 
+-- One then builds a symbol table for the and looks these up
 -- For a module to be valid, each of these must either be imported or
 -- declared.
 class ReferencedNames a where
   referencedNames :: a -> Set (QName (Scoped SrcSpanInfo))
+
+instance ReferencedNames a => ReferencedNames [a] where referencedNames l = foldr (\a r -> Set.union r (referencedNames a)) Set.empty l
+instance ReferencedNames a => ReferencedNames (Maybe a) where referencedNames = maybe Set.empty referencedNames
 
 instance (l ~ Scoped SrcSpanInfo) => ReferencedNames (Module l) where
     referencedNames m =

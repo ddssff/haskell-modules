@@ -6,7 +6,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeFamilies #-}
-{-# OPTIONS -Wall -ddump-minimal-imports #-}
+{-# OPTIONS -Wall #-}
 
 module Language.Haskell.Modules.Graphs
     ( declGroupName

@@ -157,8 +157,7 @@ test2 = TestCase (assertEqual "buildEnvironment 2"
 env2 :: Environment
 env2 =
     $(do let paths = fmap ("src/Language/Haskell/Modules" </>)
-                       ["Clean.hs",
-                        "CPP.hs",
+                       ["CPP.hs",
                         "Danger.hs",
                         "FGL.hs",
                         "Graphs.hs",
