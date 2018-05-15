@@ -6,7 +6,7 @@ module Query where
 import Control.Monad.State (evalStateT, runStateT)
 import Data.Default (def)
 import Data.Graph.Inductive (grev)
-import Data.Set as Set (difference, empty, filter, fromList, unions)
+import Data.Set as Set (difference, empty, filter, fromList, union, unions)
 import Language.Haskell.Exts (Name(Ident, Symbol))
 import Language.Haskell.Exts.Syntax (ModuleName(..))
 import Language.Haskell.Names (ppSymbol, Symbol(..))
@@ -189,6 +189,18 @@ test6 =
                              Selector {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "_prefix", typeName = Ident () "RenderInfo", constructors = [Ident () "RenderInfo"]}
                             ])
                   (Set.difference (declaredSymbols (env', i)) (referencedSymbols (env', i)))
+
+test7 :: Test
+test7 =
+  TestCase $ do let path = "src/Language/Haskell/Modules/Info.hs"
+                ([i], env') <- readFile path >>= \text -> runStateT (parseAndAnnotateModules def [(path, text)]) env2
+                assertEqual "redundant imports 1"
+                  Set.empty
+                  (Set.difference
+                     (importedSymbols (env', i))
+                     (Set.union
+                        (referencedSymbols (env', i))
+                        (exportedSymbols (env', i))))
 
 demo1 = do
   [i] <- let path = "src/Langauge/Haskell/Modules/FGL.hs" in readFile path >>= \text -> evalStateT (parseAndAnnotateModules def [(path, text)]) env2

@@ -14,11 +14,12 @@ module Language.Haskell.Modules.Info
     , ImportSpecWithDecl
     ) where
 
-import Data.Generics
+import Data.List (nub)
+import Data.Generics (Data, Typeable)
 import Instances.TH.Lift ()
 import Language.Haskell.Exts.Comments (Comment(..))
-import Language.Haskell.Exts.SrcLoc
-import Language.Haskell.Exts.Syntax
+import Language.Haskell.Exts.SrcLoc (SrcSpanInfo)
+import Language.Haskell.Exts.Syntax (Module, ImportDecl, ImportSpec)
 import Language.Haskell.Modules.Orphans ()
 import Language.Haskell.Names.GlobalSymbolTable as Global (Table)
 import Language.Haskell.TH.Lift (deriveLift)
