@@ -1,6 +1,7 @@
 -- | Turn modules with added and removed elements back into text.
 
 {-# LANGUAGE CPP, FlexibleContexts, RankNTypes, ScopedTypeVariables, TemplateHaskell, TypeFamilies #-}
+{-# OPTIONS -Wall #-}
 
 module Language.Haskell.Modules.Render
     ( renderModule

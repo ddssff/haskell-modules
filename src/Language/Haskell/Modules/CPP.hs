@@ -6,6 +6,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# OPTIONS -Wall #-}
 
 module Language.Haskell.Modules.CPP
   ( Language.Haskell.Modules.CPP.defaultParseMode

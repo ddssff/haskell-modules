@@ -4,6 +4,7 @@
 module Environment where
 
 import Control.Lens (over)
+import Control.Monad.State (runStateT)
 import Data.Default (def)
 import Data.Graph.Inductive (grev)
 import Data.List (sortBy)
@@ -12,22 +13,24 @@ import Data.Set as Set (difference, empty, insert, Set, singleton, toList, union
 import Language.Haskell.Exts (Name(Ident), SrcSpanInfo)
 import Language.Haskell.Exts.Syntax (ImportDecl(..), Module, ModuleName(..))
 import Language.Haskell.Interpreter (runInterpreter, getModuleExports{-, InterpreterError-})
-import Language.Haskell.Modules.CPP ({-ghcOptions,-} hsSourceDirs)
+--import Language.Haskell.Modules.CPP ({-ghcOptions,-} GHCOpts, hsSourceDirs)
 import Language.Haskell.Modules.Danger (dangerous)
 import Language.Haskell.Modules.FGL (components)
-import Language.Haskell.Modules.Imports (buildEnvironment)
+import Language.Haskell.Modules.Imports
+  (buildEnvironmentForNames, buildEnvironmentForSource)
 import Language.Haskell.Modules.Info (ModuleInfo(..))
 import Language.Haskell.Modules.IO (loadModules)
 import Language.Haskell.Modules.Orphans ()
-import Language.Haskell.Modules.Query (importedModules)
+import Language.Haskell.Modules.Parse (parseModule)
+--import Language.Haskell.Modules.Query (importedModules)
 import Language.Haskell.Modules.Reify (findModuleSymbols)
-import Language.Haskell.Modules.Utils (setFromList)
+--import Language.Haskell.Modules.Utils (setFromList)
 import Language.Haskell.Names (Environment, loadBase, ppSymbol, Scoped(..), Symbol(..))
 import Language.Haskell.Names.SyntaxUtils (dropAnn, getModuleName)
-import Language.Haskell.TH.Syntax (lift, runIO)
 import Language.Haskell.Exts.Syntax (Name(..))
+import Language.Haskell.TH (ExpQ)
 import Language.Haskell.TH.Instances ()
-import Language.Haskell.TH.Syntax (ModName(..), PkgName(..))
+import Language.Haskell.TH.Syntax (lift, ModName(..), PkgName(..), runIO)
 import Prelude hiding (lookup)
 import System.FilePath ((</>))
 import System.IO (readFile, writeFile)
@@ -41,6 +44,7 @@ import qualified Control.Monad -- (msum, when)
 import qualified Control.Monad.Catch
 import qualified Control.Monad.RWS
 import qualified Control.Monad.State
+import qualified Control.Monad.Trans
 import qualified Data.Char
 import qualified Data.Data
 import qualified Data.Default
@@ -55,6 +59,7 @@ import qualified Data.Set
 import qualified Data.Tuple
 import qualified Data.Version
 import qualified Debug.Show
+import qualified Debug.Trace
 import qualified Distribution.Compat.ReadP
 import qualified Distribution.Package
 import qualified Distribution.Text
@@ -91,7 +96,7 @@ test1 = TestCase (assertEqual "buildEnvironment 1"
                     env1)
 
 env1 :: Environment
-env1 = $(buildEnvironment 0 dangerous (Set.singleton (ModuleName () "Prelude")))
+env1 = $(buildEnvironmentForNames 0 dangerous (Set.singleton (ModuleName () "Prelude")))
 
 test2 :: Test
 test2 = TestCase (assertEqual "buildEnvironment 2"
@@ -101,6 +106,7 @@ test2 = TestCase (assertEqual "buildEnvironment 2"
                                    (ModuleName () "Control.Monad.Catch",34),
                                    (ModuleName () "Control.Monad.RWS",115),
                                    (ModuleName () "Control.Monad.State",69),
+                                   (ModuleName () "Control.Monad.Trans",4),
                                    (ModuleName () "Data.Char",63),
                                    (ModuleName () "Data.Data",106),
                                    (ModuleName () "Data.Default",2),
@@ -149,14 +155,18 @@ test2 = TestCase (assertEqual "buildEnvironment 2"
 -- by a list of modules, in this case the modules of this library.
 env2 :: Environment
 env2 =
-    $(do mods <- runIO (loadModules
+    $(do let paths = fmap ("src/Language/Haskell/Modules" </>)
+                       ["Utils.hs", "SrcLoc.hs", "Reify.hs", "Orphans.hs", "Info.hs", "FGL.hs", "Split.hs",
+                        "CPP.hs", "Parse.hs", "Query.hs", "Render.hs", "IO.hs", "Danger.hs", "Imports.hs"]
+         buildEnvironmentForSource 0 def dangerous paths)
+{-
+         (mods, env) <-
+             runIO (runStateT
+                     (loadModules
                           (over hsSourceDirs (++ ["/home/dsf/git/haskell-modules/src", "/home/dsf/git/haskell-modules/tests"]) def)
-                            (fmap ("src/Language/Haskell/Modules" </>)
-                               ["Utils.hs", "SrcLoc.hs", "Reify.hs", "Orphans.hs", "Info.hs", "FGL.hs", "Split.hs",
-                                "CPP.hs", "Parse.hs", "Query.hs", "Render.hs", "IO.hs", "Danger.hs", "Imports.hs"]))
+                            paths)
+                     mempty)
          -- These symbols are bound to declarations that use
          -- implicit parameters, and are therefore impossible to
-         -- reify (as of ghc-8.0 thru 8.4.)
-         buildEnvironment 0 dangerous (Set.difference
-                                         (Set.insert (ModuleName () "Prelude") (Set.unions (fmap (importedModules . _module) mods)))
-                                         (setFromList (fmap (dropAnn . getModuleName . _module) mods))))
+         -- reify (as of ghc-8.0 thru 8.4.)))
+-}

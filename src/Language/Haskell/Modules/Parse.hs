@@ -1,5 +1,7 @@
 -- | Parse a set of modules and annotate them with scoping information.
 
+{-# LANGUAGE FlexibleContexts #-}
+
 module Language.Haskell.Modules.Parse
     ( parseModule
     , parseAndAnnotateModules
@@ -8,6 +10,8 @@ module Language.Haskell.Modules.Parse
     ) where
 
 import Control.Lens (over, view)
+import Control.Monad.State (get, modify, MonadState)
+import Control.Monad.Trans (liftIO, MonadIO)
 import Data.Generics (everywhere, mkT)
 import Language.Haskell.Exts.CPP (parseFileContentsWithCommentsAndCPP)
 import Language.Haskell.Exts.SrcLoc
@@ -15,7 +19,7 @@ import Language.Haskell.Exts.Parser as Exts (fromParseResult)
 import Language.Haskell.Modules.CPP (cppOptions, defaultParseMode, GHCOpts, turnOffLocations)
 import Language.Haskell.Modules.Info (ModuleInfo(..))
 import Language.Haskell.Modules.SrcLoc (fixEnds, fixSpan, mapTopAnnotations, spanOfText)
-import Language.Haskell.Names (annotate, resolve, Scoped(..))
+import Language.Haskell.Names (annotate, Environment, resolve, Scoped(..))
 import Language.Haskell.Names.Imports (importTable)
 import Language.Haskell.Names.ModuleSymbols (moduleTable)
 
@@ -40,14 +44,20 @@ parseModule opts path text = do
                     , _moduleSpan = spanOfText path text
                     , _moduleGlobals = mempty }
 
-parseAndAnnotateModules :: GHCOpts -> [(FilePath, String)] -> IO [ModuleInfo (Scoped SrcSpanInfo)]
-parseAndAnnotateModules opts pairs = addScope <$> mapM (uncurry (parseModule opts)) pairs
+parseAndAnnotateModules ::
+    (MonadState Environment m, MonadIO m)
+    => GHCOpts
+    -> [(FilePath, String)]
+    -> m [ModuleInfo (Scoped SrcSpanInfo)]
+parseAndAnnotateModules opts pairs =
+    addScope =<< mapM (liftIO . uncurry (parseModule opts)) pairs
 
-addScope :: [ModuleInfo SrcSpanInfo] -> [ModuleInfo (Scoped SrcSpanInfo)]
-addScope mods =
-    fmap (\m -> m {_module = annotate env (_module m),
-                   _moduleGlobals = moduleTable (importTable env (_module m)) (_module m)}) mods
-    where env = resolve (fmap _module mods) mempty
+addScope :: MonadState Environment m => [ModuleInfo SrcSpanInfo] -> m [ModuleInfo (Scoped SrcSpanInfo)]
+addScope mods = do
+  modify (resolve (fmap _module mods))
+  env <- get
+  return $ fmap (\m -> m {_module = annotate env (_module m),
+                          _moduleGlobals = moduleTable (importTable env (_module m)) (_module m)}) mods
 
 unScope :: Scoped a -> a
 unScope (Scoped _ l) = l

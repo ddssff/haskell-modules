@@ -4,6 +4,7 @@
 -- such as replacing existing nodes with new identical ones.
 
 {-# LANGUAGE CPP, FlexibleContexts, FlexibleInstances, ScopedTypeVariables, StandaloneDeriving #-}
+{-# OPTIONS -Wall #-}
 
 module Language.Haskell.Modules.FGL
     ( -- * Pure operations
