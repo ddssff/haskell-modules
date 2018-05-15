@@ -7,6 +7,7 @@ module Language.Haskell.Modules.Render
     ( renderModule
     ) where
 
+import Debug.Trace (trace)
 import Control.Lens (makeLenses, over, set, view)
 import Control.Monad.RWS
 import Language.Haskell.Exts.SrcLoc
@@ -101,27 +102,27 @@ renderModule i@(ModuleInfo {_module = Module _l h ps is ds, _moduleComments = _c
     -- filtering is done based on (decl, spec) pairs.
     scanImport :: ImportDecl (Scoped l) -> RWS (RenderInfo l) String (Int, Int) ()
     -- An unqualified module import
-    scanImport idecl@(ImportDecl {importSpecs = Nothing}) = keep (spanEnd idecl)
+    scanImport idecl@(ImportDecl {importSpecs = Nothing}) = keep (spanEnd (t7 idecl))
     -- An import hiding
-    scanImport idecl@(ImportDecl {importSpecs = Just (ImportSpecList _ True _)}) = keep (spanEnd idecl)
-#if 1
-    scanImport idecl@(ImportDecl {importSpecs = Just (ImportSpecList _ False _)}) = keep (spanEnd idecl)
-#else
+    scanImport idecl@(ImportDecl {importSpecs = Just (ImportSpecList _ hiding@True _)}) = keep (spanEnd (t8 idecl))
     scanImport idecl@(ImportDecl {importSpecs = Just (ImportSpecList _ False ispecs)}) = do
-      _ <- foldM (scanImportSpec idecl) True ispecs
+      _ <- foldM (scanImportSpec (t9 idecl)) True ispecs
       return ()
-    scanImportSpec :: ImportDecl (Scoped l) -> Bool -> ImportSpec (Scoped l) -> RWS RenderInfo String (Int, Int) Bool
+    scanImportSpec :: ImportDecl (Scoped l) -> Bool -> ImportSpec (Scoped l) -> RWS (RenderInfo l) String (Int, Int) Bool
     scanImportSpec idecl prev ispec =
-        case selectedImports (idecl, ispec) of
+        case selectedImports (idecl, t10 ispec) of
           True -> do
-            (if prev then keep else {-skip-} keepV "-") (srcSpanStart (srcInfoSpan (ann ispec)))
-            keepV "+" (srcSpanEnd (srcInfoSpan (ann ispec)))
+            (if prev then keep else {-skip-} keepV "-") (spanStart ispec)
+            keepV "+" (spanEnd ispec)
             return True
           False -> do
-            (if prev then keep else {-skip-} keepV "-") (srcSpanStart (srcInfoSpan (ann ispec)))
-            keepV "-" {-skip-} (srcSpanEnd (srcInfoSpan (ann ispec)))
+            (if prev then keep else {-skip-} keepV "-") (spanStart ispec)
+            keepV "-" {-skip-} (spanEnd ispec)
             return False
-#endif
+    t7 x = {-trace ("\nt7: " ++ show x)-} x
+    t8 x = {-trace ("\nt8: " ++ show x)-} x
+    t9 x = {-trace ("\nt9: " ++ show x)-} x
+    t10 x = {-trace ("\nt10: " ++ show x)-} x
       -- keepS (ann i)
       -- keepEV "(i)" (ann i)
 {-

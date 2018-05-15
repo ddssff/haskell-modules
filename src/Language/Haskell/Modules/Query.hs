@@ -136,17 +136,19 @@ instance ReferencedSymbols (Environment, Module (Scoped SrcSpanInfo), ExportSpec
         where names = fmap nameToQName (gFind x :: [Name (Scoped SrcSpanInfo)]) ++ gFind x :: [QName (Scoped SrcSpanInfo)]
 
 instance ReferencedSymbols (Environment, Module (Scoped SrcSpanInfo), Decl (Scoped SrcSpanInfo)) where
-    -- A type signature does not count as a reference, if a symbol
-    -- is declared in a module and has an accompanying signature
-    -- it still may be "Defined but not used".
-    referencedSymbols (_env, _m, (TypeSig {})) = Set.empty
+    -- The symbol being declared by a type signature does not count as
+    -- a reference, if a symbol is declared in a module and has an
+    -- accompanying signature it still may be "Defined but not used".
+    referencedSymbols (env, m, (TypeSig _ names typ)) =
+        ({-t1 x-} (Set.fromList (concatMap (`lookupName` moduleGlobals env m) names)))
+        where names = fmap nameToQName (gFind (t1 typ) :: [Name (Scoped SrcSpanInfo)]) ++ gFind typ :: [QName (Scoped SrcSpanInfo)]
     referencedSymbols (env, m, x) =
         (Set.difference
           ({-t1 x-} (Set.fromList (concatMap (`lookupName` moduleGlobals env m) names)))
           ({-t2 x-} (declaredSymbols (env, m, x))))
         where names = fmap nameToQName (gFind x :: [Name (Scoped SrcSpanInfo)]) ++ gFind x :: [QName (Scoped SrcSpanInfo)]
 
--- t1 d r = trace ("referenced by " ++ show d ++ ": " ++ show r) r
+t1 x = trace ("typesig type: " ++ show x) x
 -- t2 d r = trace ("declared by " ++ show d ++ ": " ++ show r) r
 
 {-

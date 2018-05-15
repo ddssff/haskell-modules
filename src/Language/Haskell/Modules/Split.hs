@@ -16,13 +16,17 @@ module Language.Haskell.Modules.Split
     , DeclGroup(unDecs)
     , declares
     , declGroupName
+    , cleanImports
     ) where
 
+import Debug.Trace (trace)
 import Control.Monad.State (State)
 import Data.Foldable as Foldable
 import Data.Generics
 import Data.Graph.Inductive (Gr, NodeMap)
-import Data.Maybe (mapMaybe)
+import Data.List (intercalate)
+import Data.Map as Map (keys, lookup, Map{-, member-})
+import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Set as Set (difference, filter, empty, fromList, insert, intersection, map, member, null, Set, toList, union, unions)
 import Language.Haskell.Exts.SrcLoc
 import Language.Haskell.Exts.Syntax
@@ -31,6 +35,7 @@ import Language.Haskell.Modules.Info
 import Language.Haskell.Modules.Query
 import Language.Haskell.Modules.Utils
 import Language.Haskell.Names (Environment, Scoped(..), Symbol)
+import Language.Haskell.Names.Imports (importTable)
 import Language.Haskell.Names.ModuleSymbols (getTopDeclSymbols)
 import Language.Haskell.Names.SyntaxUtils -- (dropAnn, getImports, getModuleDecls)
 
@@ -157,7 +162,7 @@ exportsToKeep ::
     -> ModuleInfo (Scoped l)
     -> Set (Decl (Scoped l))
     -> Set (ExportSpec (Scoped l))
-exportsToKeep env i@(ModuleInfo {_module = Module _ (Just (ModuleHead _ _ _(Just (ExportSpecList _ es)))) _ _ _}) ds  =
+exportsToKeep env i@(ModuleInfo {_module = Module _ (Just (ModuleHead _ _ _ (Just (ExportSpecList _ es)))) _ _ _}) ds  =
   Foldable.foldl go Set.empty es
   where
     syms = foldr1 Set.union (Set.map (declares env i) ds)
@@ -200,6 +205,71 @@ importsToKeep env i@(ModuleInfo {_module = Module _ _ _ is _}) ds es =
         then Set.insert (idecl, ispec) r
         else r
 importsToKeep _ _ _ _ = error "importsToKeep"
+
+cleanImports ::
+    forall l. (l ~ Scoped SrcSpanInfo)
+    => Environment
+    -> ModuleInfo l
+    -> ImportSpecWithDecl l
+    -> Bool
+cleanImports env i@(ModuleInfo {_module = m@(Module _ _ _ is _)}) =
+    flip Set.member (foldl goDecl Set.empty is)
+    where
+      refs :: Set Symbol
+      refs = referencedSymbols (env, m)
+      -- I *think* the qnames here are the same as the ones I compute
+      -- below for each import spec.  Any import specs whose qname
+      -- maps to symbols that are not in the set refs should be
+      -- dropped.
+      table :: Map (QName ()) [Symbol]
+      table = importTable env (_module i)
+      goDecl :: Set (ImportSpecWithDecl l) -> ImportDecl l -> Set (ImportSpecWithDecl l)
+      goDecl r idecl@(ImportDecl {importModule = mname,
+                                  importAs = aname,
+                                  importSpecs = Just (ImportSpecList _ False isl)}) = foldl (\r s -> goSpec idecl (\name -> Qual () (dropAnn (fromMaybe mname aname)) (dropAnn name)) r (t5 s)) r isl
+      goDecl r (ImportDecl {importSpecs = Just (ImportSpecList _ _hiding@True _isl)}) = r
+      goDecl r (ImportDecl {importSpecs = Nothing}) = r
+      goSpec ::
+           ImportDecl l
+        -> (Name l -> QName ())
+        -> Set (ImportSpecWithDecl l)
+        -> ImportSpec l
+        -> Set (ImportSpecWithDecl l)
+      goSpec idecl qname r ispec@(IVar _ name) =
+          case Map.lookup (qname name) table of
+            Nothing -> error $ "Wrong qname: " ++ show (qname name) ++ " (table1: " ++ show (Map.keys table) ++ ")"
+            Just syms -> case Prelude.filter (`Set.member` refs) (t3 (qname name) syms) of
+                           [] -> t6 (qname name) refs r
+                           _ -> Set.insert (idecl, ispec) r
+      goSpec idecl qname r ispec@(IAbs _l _space name) =
+          case Map.lookup (qname name) table of
+            Nothing -> error $ "Wrong qname: " ++ show (qname name) ++ " (table2: " ++ show (Map.keys table) ++ ")"
+            Just syms -> case Prelude.filter (`Set.member` refs) (t4 (qname name) syms) of
+                           [] -> t6 (qname name) refs r
+                           _ -> Set.insert (idecl, ispec) r
+      goSpec idecl qname r ispec@(IThingAll _l name) =
+          case Map.lookup (qname name) table of
+            Nothing -> error $ "Wrong qname: " ++ show (qname name) ++ " (table3: " ++ show (Map.keys table) ++ ")"
+            Just syms -> case Prelude.filter (`Set.member` refs) (t2 (qname name) syms) of
+                           [] -> t6 (qname name) refs r
+                           _ -> Set.insert (idecl, ispec) r
+      goSpec idecl qname r ispec@(IThingWith _l name _cnames) =
+          case Map.lookup (qname name) table of
+            Nothing -> error $ "Wrong qname: " ++ show (qname name) ++ " (table4: " ++ show (Map.keys table) ++ ")"
+            Just syms -> case Prelude.filter (`Set.member` refs) (t1 (qname name) syms) of
+                           [] -> t6 (qname name) refs r
+                           _ -> Set.insert (idecl, ispec) r
+        -- if not (Set.null (Set.intersection (imports env i (importModule idecl) (importAs idecl) ispec) syms))
+        -- then Set.insert (idecl, ispec) r
+        -- else r
+cleanImports _ _ = const True
+
+t1 n x = trace ("\nIThing\n qname: " ++ show n ++ "\n  syms: " ++ show x) x
+t2 n x = trace ("\nIThingAll\n qname: " ++ show n ++ "\n  syms: " ++ show x) x
+t3 n x = trace ("\nIVar\n qname: " ++ show n ++ "\n  syms: " ++ show x) x
+t4 n x = trace ("\nIAbs\n qname: " ++ show n ++ "\n  syms: " ++ show x) x
+t5 x = {-trace ("\nispec: " ++ show x)-} x
+t6 n rs x = trace ("\nt6 " ++ show n ++ "\n refs:\n" ++ intercalate "\n    " (fmap show (Set.toList rs))) x
 
 -- | Symbols declared by a declaration.  (Should take a single element, not a set.)
 declares :: (Data l, Ord l) => Environment -> ModuleInfo l -> Decl l -> Set Symbol

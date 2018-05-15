@@ -12,20 +12,21 @@ import Language.Haskell.Exts.Syntax (ModuleName(..))
 import Language.Haskell.Names (ppSymbol, Symbol(..))
 import Language.Haskell.TH.Instances ()
 import Prelude hiding (lookup)
+-- import Language.Haskell.Modules.Clean (cleanImports)
 import Language.Haskell.Modules.FGL (components)
 import Language.Haskell.Modules.Info (ModuleInfo(..))
 import Language.Haskell.Modules.Orphans ()
 import Language.Haskell.Modules.Parse (parseAndAnnotateModules)
 import Language.Haskell.Modules.Query (declaredSymbols, exportedSymbols, importedSymbols, referencedSymbols)
 import Language.Haskell.Modules.Render (renderModule)
-import Language.Haskell.Modules.Split (bisect, declares, DeclGroup(unDecs), withDecomposedModule)
+import Language.Haskell.Modules.Split (bisect, declares, DeclGroup(unDecs), withDecomposedModule, cleanImports)
 import System.IO (readFile, writeFile)
 import Test.HUnit hiding (path)
 
 import Environment (env2)
 
 tests :: Test
-tests = TestList [test1, test2, test3, test4, test5, test6]
+tests = TestList [test1, test2, test3, test4, test5, test5b, test5c, test6]
 
 test1 :: Test
 test1 =
@@ -170,6 +171,35 @@ test5 =
                   (Set.filter (\ x -> symbolModule x == ModuleName () "Language.Haskell.Modules.Render")
                     (referencedSymbols (env', _module i)))
 
+test5b :: Test
+test5b =
+  TestCase $ do let path = "src/Language/Haskell/Modules/Info.hs"
+                ([i], env') <- readFile path >>= \text -> runStateT (parseAndAnnotateModules def [(path, text)]) env2
+                assertEqual "referenced 2"
+                  (fromList [Value {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "moduleGlobals"},
+                             Constructor {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "ModuleInfo", typeName = Ident () "ModuleInfo"},
+                             Type {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "ImportSpecWithDecl"},
+                             Data {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "ModuleInfo"}])
+                  (Set.filter (\ x -> symbolModule x == ModuleName () "Language.Haskell.Modules.Info")
+                    (referencedSymbols (env', _module i)))
+
+test5c :: Test
+test5c =
+  TestCase $ do let path = "src/Language/Haskell/Modules/Info.hs"
+                ([i], env') <- readFile path >>= \text -> runStateT (parseAndAnnotateModules def [(path, text)]) env2
+                assertEqual "declared 2"
+                  (fromList [Value {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "moduleGlobals"},
+                             Selector {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "_module", typeName = Ident () "ModuleInfo", constructors = [Ident () "ModuleInfo"]},
+                             Selector {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "_moduleComments", typeName = Ident () "ModuleInfo", constructors = [Ident () "ModuleInfo"]},
+                             Selector {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "_modulePath", typeName = Ident () "ModuleInfo", constructors = [Ident () "ModuleInfo"]},
+                             Selector {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "_moduleSpan", typeName = Ident () "ModuleInfo", constructors = [Ident () "ModuleInfo"]},
+                             Selector {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "_moduleText", typeName = Ident () "ModuleInfo", constructors = [Ident () "ModuleInfo"]},
+                             Constructor {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "ModuleInfo", typeName = Ident () "ModuleInfo"},
+                             Type {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "ImportSpecWithDecl"},
+                             Data {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "ModuleInfo"}])
+                  (Set.filter (\ x -> symbolModule x == ModuleName () "Language.Haskell.Modules.Info")
+                    (declaredSymbols (env', _module i)))
+
 test6 :: Test
 test6 =
   TestCase $ do let path = "src/Language/Haskell/Modules/Render.hs"
@@ -190,18 +220,6 @@ test6 =
                             ])
                   (Set.difference (declaredSymbols (env', i)) (referencedSymbols (env', i)))
 
-test7 :: Test
-test7 =
-  TestCase $ do let path = "src/Language/Haskell/Modules/Info.hs"
-                ([i], env') <- readFile path >>= \text -> runStateT (parseAndAnnotateModules def [(path, text)]) env2
-                assertEqual "redundant imports 1"
-                  Set.empty
-                  (Set.difference
-                     (importedSymbols (env', i))
-                     (Set.union
-                        (referencedSymbols (env', i))
-                        (exportedSymbols (env', i))))
-
 demo1 = do
   [i] <- let path = "src/Langauge/Haskell/Modules/FGL.hs" in readFile path >>= \text -> evalStateT (parseAndAnnotateModules def [(path, text)]) env2
   mapM_ (\(s, n) -> writeFile ("Tmp" ++ show n ++ ".hs") s) (zip (withDecomposedModule env2 components renderModule i) [1..])
@@ -219,5 +237,13 @@ demo3 = do
 demo4 = do
   [i] <- let path = "src/Langauge/Haskell/Modules/FGL.hs" in readFile path >>= \text -> evalStateT (parseAndAnnotateModules def [(path, text)]) env2
   mapM_ (\(s, n) -> writeFile ("Tmp" ++ show n ++ ".hs") s) (zip (withDecomposedModule env2 (bisect (\d -> any (testSymbolString (== "Language.Haskell.Modules.FGL.context")) (Set.unions (fmap (declares env2 i) (unDecs d)))) . grev) renderModule i) [1..])
+
+demo5 = do
+  let path = "src/Language/Haskell/Modules/Info.hs"
+  ([i], env) <- readFile path >>= \text -> runStateT (parseAndAnnotateModules def [(path, text)]) env2
+  let p = cleanImports env i
+      -- m' = cleanImports env (_module i)
+      s = renderModule i (const True) (const True) p
+  putStrLn s
 
 testSymbolString p s = p (ppSymbol s)
