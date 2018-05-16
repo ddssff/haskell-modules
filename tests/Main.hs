@@ -13,6 +13,7 @@ import Language.Haskell.Exts.Syntax (ModuleName(..))
 import qualified Language.Haskell.Exts.Syntax as Exts
 import Language.Haskell.Interpreter (runInterpreter, getModuleExports{-, InterpreterError-})
 import qualified Language.Haskell.Interpreter as Hint (ModuleElem(..))
+import qualified Language.Haskell.Modules.CPP as CPP (tests)
 import Language.Haskell.Names (loadBase, Symbol(..))
 import Language.Haskell.TH.Syntax (lift, runIO)
 import qualified Language.Haskell.TH.Syntax as TH
@@ -35,7 +36,7 @@ main = do
   when (es > 0 || fs > 0) (error (showCounts cs))
 
 tests :: Test
-tests = TestList [test1, test2, test3, test4, test5, Environment.test2, Query.tests]
+tests = TestList [test1, test2, test3, test4, test5, Environment.test2, Query.tests, CPP.tests]
 
 test1 :: Test
 test1 = TestCase (assertEqual "reifyModule Prelude"

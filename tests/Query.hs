@@ -8,14 +8,16 @@ import Data.Default (def)
 --import Data.Graph.Inductive (grev)
 import Data.Set as Set (difference, filter, fromList, map, union, unions)
 import Language.Haskell.Exts (Name(..), QName(..))
+import Language.Haskell.Exts.SrcLoc (SrcSpanInfo)
 import Language.Haskell.Exts.Syntax (ModuleName(..))
-import Language.Haskell.Names (ppSymbol, Symbol(..))
+import Language.Haskell.Names (Environment, ppSymbol, Scoped, Symbol(..))
 import Language.Haskell.TH.Instances ()
 import Prelude hiding (lookup)
 -- import Language.Haskell.Modules.Clean (cleanImports)
 import Language.Haskell.Modules.FGL (components)
 import Language.Haskell.Modules.Graphs (DeclGroup(unDecs))
 import Language.Haskell.Modules.Info (ModuleInfo(..))
+import Language.Haskell.Modules.IO (loadModules)
 import Language.Haskell.Modules.Orphans ()
 import Language.Haskell.Modules.Parse (parseAndAnnotateModules)
 import Language.Haskell.Modules.Query (declaredSymbols, exportedSymbols', importedSymbols, referencedNames, referencedSymbols)
@@ -24,7 +26,8 @@ import Language.Haskell.Modules.Split (bisect, withDecomposedModule, cleanImport
 import Language.Haskell.Names.Exports (exportedSymbols)
 import Language.Haskell.Names.Imports (importTable)
 import Language.Haskell.Names.ModuleSymbols (moduleTable)
-import Language.Haskell.Names.SyntaxUtils (dropAnn)
+import Language.Haskell.Names.SyntaxUtils (dropAnn, getModuleName)
+import System.FilePath ((</>))
 import System.IO (readFile, writeFile)
 import Test.HUnit hiding (path)
 
@@ -33,10 +36,37 @@ import Environment (env2)
 tests :: Test
 tests = TestList [test1, test2, test3, test4, test5, test5b, test5c, test6]
 
+paths = fmap ("src/Language/Haskell/Modules" </>)
+          ["Utils.hs",
+           "SrcLoc.hs",
+           "Orphans.hs",
+           "Info.hs",
+           "Query.hs",
+           "FGL.hs",
+           "Graphs.hs",
+           "Split.hs",
+           "Danger.hs",
+           "CPP.hs",
+           "Parse.hs",
+           "IO.hs",
+           "Render.hs",
+           "Reify.hs",
+           "Environment.hs"]
+
+load :: IO ([ModuleInfo (Scoped SrcSpanInfo)], Environment)
+load = runStateT (loadModules def paths) env2
+
+loadMyModule :: String -> IO (ModuleInfo (Scoped SrcSpanInfo), Environment)
+loadMyModule nick = do
+  let name = "Language.Haskell.Modules." ++ nick
+  (mods, env') <- load
+  case Prelude.filter (\x -> dropAnn (getModuleName (_module x)) == ModuleName () name) mods of
+    [i] -> return (i, env')
+    [] -> error $ "Could not load module " ++ name
+
 test1 :: Test
 test1 =
-  TestCase $ do let path = "src/Language/Haskell/Modules/Render.hs"
-                ([i], env') <- readFile path >>= \text -> runStateT (parseAndAnnotateModules def [(path, text)]) env2
+  TestCase $ do (i, env') <- loadMyModule "Render"
                 assertEqual "declared 1"
                   (Set.fromList [Value {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "initRenderInfo"},
                                  Value {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "keep"},
@@ -63,8 +93,7 @@ test1 =
 
 test2 :: Test
 test2 =
-  TestCase $ do let path = "src/Language/Haskell/Modules/FGL.hs"
-                ([i], env') <- readFile path >>= \text -> runStateT (parseAndAnnotateModules def [(path, text)]) env2
+  TestCase $ do (i, env') <- loadMyModule "FGL"
                 assertEqual "exported 1"
                   (Set.fromList [Value {symbolModule = ModuleName () "Language.Haskell.Modules.FGL", symbolName = Ident () "components"},
                                  Value {symbolModule = ModuleName () "Language.Haskell.Modules.FGL", symbolName = Ident () "context"},
@@ -93,8 +122,7 @@ test2 =
 
 test3 :: Test
 test3 =
-  TestCase $ do let path = "src/Language/Haskell/Modules/FGL.hs"
-                ([i], env') <- readFile path >>= \text -> runStateT (parseAndAnnotateModules def [(path, text)]) env2
+  TestCase $ do (i, env') <- loadMyModule "FGL"
                 assertEqual "imported 1"
                   (Set.fromList
                    [Value {symbolModule = ModuleName () "Control.Lens.Setter", symbolName = Ident () "over"},
@@ -148,8 +176,7 @@ test3 =
 -- | Symbols declared but not exported are local
 test4 :: Test
 test4 =
-  TestCase $ do let path = "src/Language/Haskell/Modules/FGL.hs"
-                ([i], env') <- readFile path >>= \text -> runStateT (parseAndAnnotateModules def [(path, text)]) env2
+  TestCase $ do (i, env') <- loadMyModule "FGL"
                 assertEqual "local 1"
                   (fromList
                    [Value {symbolModule = ModuleName () "Language.Haskell.Modules.FGL", symbolName = Ident () "edgesFromGraph"},
@@ -160,8 +187,7 @@ test4 =
 
 test5 :: Test
 test5 =
-  TestCase $ do let path = "src/Language/Haskell/Modules/Render.hs"
-                ([i], env') <- readFile path >>= \text -> runStateT (parseAndAnnotateModules def [(path, text)]) env2
+  TestCase $ do (i, env') <- loadMyModule "Render"
                 assertEqual "referenced 1"
                   (fromList [Value {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "initRenderInfo"},
                              Value {symbolModule = ModuleName () "Language.Haskell.Modules.Render", symbolName = Ident () "keep"},
@@ -193,8 +219,7 @@ test5 =
 
 test5c :: Test
 test5c =
-  TestCase $ do let path = "src/Language/Haskell/Modules/Info.hs"
-                ([i], env') <- readFile path >>= \text -> runStateT (parseAndAnnotateModules def [(path, text)]) env2
+  TestCase $ do (i, env') <- loadMyModule "Info"
                 assertEqual "declared 2"
                   (fromList [Value {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "moduleGlobals"},
                              Selector {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "_module", typeName = Ident () "ModuleInfo", constructors = [Ident () "ModuleInfo"]},
@@ -209,8 +234,7 @@ test5c =
 
 test5d :: Test
 test5d =
-  TestCase $ do let path = "src/Language/Haskell/Modules/Info.hs"
-                ([i], _env) <- readFile path >>= \text -> runStateT (parseAndAnnotateModules def [(path, text)]) env2
+  TestCase $ do (i, env') <- loadMyModule "Info"
                 assertEqual "referenced 3"
                   (fromList [Qual () (ModuleName () "Global") (Ident () "Table"),
                              UnQual () (Ident () "Comment"),
@@ -246,8 +270,7 @@ test5d =
 
 test5b :: Test
 test5b =
-  TestCase $ do let path = "src/Language/Haskell/Modules/Info.hs"
-                ([i], env') <- readFile path >>= \text -> runStateT (parseAndAnnotateModules def [(path, text)]) env2
+  TestCase $ do (i, env') <- loadMyModule "Info"
                 assertEqual "referenced 2"
                   (fromList [Value {symbolModule = ModuleName () "Language.Haskell.Modules.Info", symbolName = Ident () "moduleGlobals"},
                              Value {symbolModule = ModuleName () "Language.Haskell.Names.Imports", symbolName = Ident () "importTable"},
@@ -281,8 +304,7 @@ test5b =
 
 test5e :: Test
 test5e =
-  TestCase $ do let path = "src/Language/Haskell/Modules/Info.hs"
-                ([i], env') <- readFile path >>= \text -> runStateT (parseAndAnnotateModules def [(path, text)]) env2
+  TestCase $ do (i, env') <- loadMyModule "Info"
                 let m = _module i
                     m' = dropAnn m
                 assertEqual "declared 2"
@@ -299,16 +321,14 @@ test5e =
 
 test5f :: Test
 test5f =
-  TestCase $ do let path = "src/Language/Haskell/Modules/Info.hs"
-                ([i], env') <- readFile path >>= \text -> runStateT (parseAndAnnotateModules def [(path, text)]) env2
+  TestCase $ do (i, env') <- loadMyModule "Info"
                 assertEqual "imported 2"
                   (fromList [Value {symbolModule = ModuleName () "Data.OldList", symbolName = Ident () "nub"}])
                   (importedSymbols (env', _module i))
 
 test5g :: Test
 test5g =
-  TestCase $ do let path = "src/Language/Haskell/Modules/Info.hs"
-                ([i], env') <- readFile path >>= \text -> runStateT (parseAndAnnotateModules def [(path, text)]) env2
+  TestCase $ do (i, env') <- loadMyModule "Info"
                 let m = _module i
                     m' = dropAnn m
                 assertEqual "redundant 1"
@@ -335,24 +355,37 @@ test5g =
 
 test6 :: Test
 test6 =
-  TestCase $ do let path = "src/Language/Haskell/Modules/Render.hs"
-                ([i], env') <- readFile path >>= \text -> runStateT (parseAndAnnotateModules def [(path, text)]) env2
+  TestCase $ do (i, env') <- loadMyModule "Render"
                 assertEqual "defined but not used 1"
                   (fromList []) -- need a better example
                   (Set.difference (declaredSymbols (env', _module i)) (referencedSymbols env' (_module i)))
 
 demo1 = do
-  ([i], env) <- let path = "src/Language/Haskell/Modules/FGL.hs" in readFile path >>= \text -> runStateT (parseAndAnnotateModules def [(path, text)]) env2
+  (i, env) <- loadMyModule "FGL"
   mapM_ (\(s, n) -> writeFile ("Tmp" ++ show n ++ ".hs") s) (zip (withDecomposedModule env components renderModule i) [1..])
 
 -- | Pull out context and everything that uses it: context, labNode
 demo3 = do
-  ([i], env) <- let path = "src/Language/Haskell/Modules/FGL.hs" in readFile path >>= \text -> runStateT (parseAndAnnotateModules def [(path, text)]) env2
-  mapM_ (\(s, n) -> writeFile ("Tmp" ++ show n ++ ".hs") s) (zip (withDecomposedModule env (bisect (\d -> any (testSymbolString (== "Language.Haskell.Modules.FGL.context")) (Set.unions (fmap (\d -> declaredSymbols (env2, _module i, d)) (unDecs d))))) renderModule i) [1..])
+  (i, env) <- loadMyModule "FGL"
+  mapM_ (\(s, n) -> writeFile ("Tmp" ++ show n ++ ".hs") s)
+        (zip (withDecomposedModule env (bisect (\d -> any (testSymbolString (== "Language.Haskell.Modules.FGL.context")) (Set.unions (fmap (\d -> declaredSymbols (env2, _module i, d)) (unDecs d))))) renderModule i) [1..])
 
 demo5 = do
-  let path = "src/Language/Haskell/Modules/Info.hs"
-  ([i], env) <- readFile path >>= \text -> runStateT (parseAndAnnotateModules def [(path, text)]) env2
+  (i, env) <- loadMyModule "Info"
+  let p = cleanImports env (_module i)
+      -- m' = cleanImports env (_module i)
+      s = renderModule i (const True) (const True) p
+  putStrLn s
+
+demo5b = do
+  (i, env) <- loadMyModule "Reify"
+  let p = cleanImports env (_module i)
+      -- m' = cleanImports env (_module i)
+      s = renderModule i (const True) (const True) p
+  putStrLn s
+
+demo5c = do
+  (i, env) <- loadMyModule "Environment"
   let p = cleanImports env (_module i)
       -- m' = cleanImports env (_module i)
       s = renderModule i (const True) (const True) p

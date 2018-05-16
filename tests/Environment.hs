@@ -15,13 +15,14 @@ import Language.Haskell.Exts.Syntax (ImportDecl(..), Module, ModuleName(..))
 import Language.Haskell.Interpreter (runInterpreter, getModuleExports{-, InterpreterError-})
 --import Language.Haskell.Modules.CPP ({-ghcOptions,-} GHCOpts, hsSourceDirs)
 import Language.Haskell.Modules.Danger (dangerous)
+import Language.Haskell.Modules.Environment (buildEnvironmentForNames, buildEnvironmentForSource)
 import Language.Haskell.Modules.FGL (components)
 import Language.Haskell.Modules.Info (ModuleInfo(..))
 import Language.Haskell.Modules.IO (loadModules)
 import Language.Haskell.Modules.Orphans ()
 import Language.Haskell.Modules.Parse (parseModule)
 --import Language.Haskell.Modules.Query (importedModules)
-import Language.Haskell.Modules.Reify (buildEnvironmentForNames, buildEnvironmentForSource, findModuleSymbols)
+import Language.Haskell.Modules.Reify (findModuleSymbols)
 --import Language.Haskell.Modules.Utils (setFromList)
 import Language.Haskell.Names (Environment, loadBase, ppSymbol, Scoped(..), Symbol(..))
 import Language.Haskell.Names.SyntaxUtils (dropAnn, getModuleName)
@@ -157,21 +158,22 @@ test2 = TestCase (assertEqual "buildEnvironment 2"
 env2 :: Environment
 env2 =
     $(do let paths = fmap ("src/Language/Haskell/Modules" </>)
-                       ["CPP.hs",
-                        "Danger.hs",
+                       ["Utils.hs",
+                        "SrcLoc.hs",
+                        "Orphans.hs",
+                        "Info.hs",
+                        "Query.hs",
                         "FGL.hs",
                         "Graphs.hs",
-                        "Info.hs",
-                        "IO.hs",
-                        "Orphans.hs",
-                        "Parse.hs",
-                        "Query.hs",
-                        "Reify.hs",
-                        "Render.hs",
                         "Split.hs",
-                        "SrcLoc.hs",
-                        "Utils.hs"]
+                        "Danger.hs",
+                        "CPP.hs",
+                        "Parse.hs",
+                        "IO.hs",
+                        "Render.hs",
+                        "Reify.hs"]
          buildEnvironmentForSource 0 def dangerous paths)
+
 {-
          (mods, env) <-
              runIO (runStateT

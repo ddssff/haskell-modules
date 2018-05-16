@@ -20,8 +20,6 @@ import Language.Haskell.Modules.CPP (cppOptions, defaultParseMode, GHCOpts, turn
 import Language.Haskell.Modules.Info (ModuleInfo(..))
 import Language.Haskell.Modules.SrcLoc (fixEnds, fixSpan, mapTopAnnotations, spanOfText)
 import Language.Haskell.Names (annotate, Environment, resolve, Scoped(..))
---import Language.Haskell.Names.Imports (importTable)
---import Language.Haskell.Names.ModuleSymbols (moduleTable)
 
 -- | Load a single module:
 --

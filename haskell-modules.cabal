@@ -40,6 +40,7 @@ Library
   Exposed-Modules:
     Language.Haskell.Modules.CPP
     Language.Haskell.Modules.Danger
+    Language.Haskell.Modules.Environment
     Language.Haskell.Modules.FGL
     Language.Haskell.Modules.Graphs
     Language.Haskell.Modules.Info

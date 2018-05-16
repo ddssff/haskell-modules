@@ -7,7 +7,7 @@ module Language.Haskell.Modules.Render
     ( renderModule
     ) where
 
-import Debug.Trace (trace)
+--import Debug.Trace (trace)
 import Control.Lens (makeLenses, over, set, view)
 import Control.Monad.RWS
 import Language.Haskell.Exts.SrcLoc

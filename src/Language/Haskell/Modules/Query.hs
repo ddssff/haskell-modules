@@ -12,9 +12,7 @@ module Language.Haskell.Modules.Query
     , lookupNames
     ) where
 
---import Debug.Trace (trace)
 import Data.Data (Data)
---import Data.Maybe (fromMaybe)
 import Data.Map as Map (lookup)
 import Data.Set as Set (difference, empty, fromList, Set, singleton, union, unions)
 import Language.Haskell.Exts.SrcLoc (SrcSpanInfo)
@@ -38,15 +36,11 @@ instance (Ord l, Data l) => DeclaredSymbols (Environment, Module l) where
 instance (Ord l, Data l) => DeclaredSymbols (Environment, Module l, Decl l) where
     declaredSymbols (env, m, d) = Set.fromList (getTopDeclSymbols (moduleGlobals env m) (getModuleName m) d)
 
--- | This duplicates the function of 'exportedSymbols'
 class ExportedSymbols a where
     exportedSymbols' :: a -> Set Symbol
 
 instance ExportedSymbols (Environment, ModuleName (Scoped l)) where
-    -- Find all the of the module's symbols in the global symbol table
     exportedSymbols' (env, name) =
-        -- It might be worth returning a Maybe to preserve the fact
-        -- that the module is not present in the environment.
         maybe Set.empty Set.fromList (Map.lookup (dropAnn name) env)
 
 instance (l ~ SrcSpanInfo) => ExportedSymbols (Environment, Module (Scoped l)) where
@@ -67,27 +61,26 @@ instance ImportedModules (Module l) where
 instance ImportedModules (ImportDecl l) where
     importedModules = Set.singleton . dropAnn . importModule
 
--- | Symbols that are either imported or declared.  Note that
--- this duplicates the Language.Haskell.Names.Imports.importTable.
 class ImportedSymbols a where
     importedSymbols :: a -> Set Symbol
 
-instance Data l => ImportedSymbols (Environment, Module (Scoped l)) where
+instance (l ~ SrcSpanInfo) => ImportedSymbols (Environment, Module (Scoped l)) where
     importedSymbols (env, m) = Set.unions (fmap (\i -> importedSymbols (env, m, i)) (getImports m))
 
-instance Data l => ImportedSymbols (Environment, Module (Scoped l), ImportDecl (Scoped l)) where
-    importedSymbols (env, m, d@ImportDecl {importModule = _mname, importAs = _aname, importSpecs = Just (ImportSpecList _ False _isl)}) =
+instance (l ~ SrcSpanInfo) => ImportedSymbols (Environment, Module (Scoped l), ImportDecl (Scoped l)) where
+    importedSymbols (env, m, d@ImportDecl {importSpecs = Just (ImportSpecList _ False _isl)}) =
         Set.unions (fmap (\s -> importedSymbols (env, m, d, s)) (gFind d :: [ImportSpec (Scoped l)]))
-        -- Set.unions (fmap (\ispec -> importedSymbols (env, m, mname, aname, ispec)) isl)
-    importedSymbols (env, m, d@ImportDecl {importModule = mname, importAs = _aname, importSpecs = Just (ImportSpecList _ True isl)}) =
-        -- All the symbols the module exports other than the ones in the list
+    importedSymbols (env, m, d@ImportDecl {importModule = mname,
+                                           importSpecs = Just (ImportSpecList _ _hiding@True isl)}) =
+        -- All the symbols the imported module exports other than the ones in the list
         Set.difference (exportedSymbols' (env, mname)) (Set.unions (fmap (\s -> importedSymbols (env, m, d, s)) isl))
     importedSymbols (env, _m, ImportDecl {importModule = mname, importSpecs = Nothing}) =
         -- All the symbols in a module
         exportedSymbols' (env, mname)
 
-instance Data l => ImportedSymbols (Environment, Module (Scoped l), ImportDecl (Scoped l), ImportSpec (Scoped l)) where
-    importedSymbols (_env, _m, _idecl, ispec) = Set.unions (fmap (symbols . ann) (gFind ispec :: [Name (Scoped l)]))
+instance (l ~ SrcSpanInfo) => ImportedSymbols (Environment, Module (Scoped l), ImportDecl (Scoped l), ImportSpec (Scoped l)) where
+    importedSymbols (_env, _m, _idecl, ispec) =
+        symbols (ann ispec)
 
 symbols :: Scoped l -> Set Symbol
 symbols x = Set.fromList (gFind (fmap (const ()) x) :: [Symbol])
